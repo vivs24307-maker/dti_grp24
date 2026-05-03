@@ -64,8 +64,7 @@
     const theatre = localStorage.getItem('theatre') || "Theatre";
     const time = localStorage.getItem('time') || "Time";
     const plan = localStorage.getItem('plan') || "Basic";
-    
-    // Get the limit they set on the previous page
+   
     const maxAllowedSeats = parseInt(localStorage.getItem('ticketCount')) || 1;
 
     document.getElementById('info').innerText = movie + " | " + theatre + " - " + time + " | Need to pick " + maxAllowedSeats + " seat(s)";
@@ -79,11 +78,11 @@
           seat.classList.add('seat', type);
 
           seat.onclick = function(){
-            // If it's already green, let them unselect it
+            
             if(seat.classList.contains('selected')) {
                seat.classList.remove('selected');
             } else {
-               // Prevent selecting more than they asked for
+             
                const currentlySelected = document.querySelectorAll('.selected').length;
                if(currentlySelected >= maxAllowedSeats) {
                  alert("You only chose to book " + maxAllowedSeats + " ticket(s). Unselect a seat first to change your choice.");
@@ -122,8 +121,7 @@
         alert("Please pick exactly " + maxAllowedSeats + " seats before proceeding!");
         return;
       }
-      
-      // Calculate real total based on the colors they clicked
+  
       let total = 0;
       const selectedElements = document.querySelectorAll('.selected');
       selectedElements.forEach(s => {
@@ -132,7 +130,6 @@
         if(s.classList.contains('sofa')) total += 800;
       });
 
-      // Apply the Premium Discount logic
       if (plan === 'Premium') {
         let discount = total * 0.10; // 10% off
         let finalTotal = total - discount;
