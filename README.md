@@ -15,7 +15,7 @@ CineVerse is a frontend movie ticketing platform built with vanilla web technolo
 
 ## 📂 File Structure & Navigation Flow
 
-1.  **`first.html`**: The landing page featuring a hero section and trending movie grid[cite: 1].
+1.  **`index.html`**: The landing page featuring a hero section and trending movie grid[cite: 1].
 2.  **`create_account.html`**: Handles new user registration and password confirmation[cite: 2].
 3.  **`login.html`**: Validates user credentials against stored data and sets the session plan[cite: 3].
 4.  **`movies.html`**: Displays the active user session and loads the interactive movie database[cite: 4].
