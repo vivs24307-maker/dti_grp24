@@ -34,4 +34,4 @@ CineVerse is a frontend movie ticketing platform built with vanilla web technolo
 
 1. Clone or download this repository to your local machine.
 2. Ensure all HTML files are located in the same directory.
-3. Open `first.html` in any modern web browser to start the application flow. No server or build tools are required.
+3. Open `index.html` in any modern web browser to start the application flow. No server or build tools are required.
