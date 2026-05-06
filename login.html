@@ -39,6 +39,10 @@
   </div>
 
   <script>
+    if (!localStorage.getItem('registeredUser') && !localStorage.getItem('registeredPass')) {
+  localStorage.setItem('registeredUser', 'admin');
+  localStorage.setItem('registeredPass', 'admin123');
+}
     function updateFeatures() {
       const plan = document.getElementById('plan').value;
       const features = document.getElementById('feature-list');
