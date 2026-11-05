@@ -1,0 +1,68 @@
+import { Router } from 'express';
+import { db } from '../db.js';
+import { config } from '../config.js';
+import { optionalAuth, requireAuth } from '../middleware/auth.js';
+import { badRequest, conflict } from '../lib/errors.js';
+import { loadShow, normaliseSeats, unavailableSeats } from '../lib/booking.js';
+import { seatMap } from '../lib/pricing.js';
+import { parseLocal } from '../lib/time.js';
+import { toInt } from '../lib/validate.js';
+
+const router = Router();
+
+function publicLayout(show) {
+  return {
+    categories: show.layout.categories.map((c) => ({
+      ...c,
+      price: Math.round((c.price * show.price_factor) / 10) * 10,
+    })),
+  };
+}
+
+router.get('/:id', optionalAuth, (req, res) => {
+  const show = loadShow(toInt(req.params.id, 'show id'));
+  const seats = unavailableSeats(show.id, req.user?.id);
+  const { layout, ...rest } = show;
+  res.json({
+    show: { ...rest, layout: publicLayout(show) },
+    unavailable: [...seats.booked, ...seats.heldByOthers],
+    myHold: seats.mine.length
+      ? { seats: seats.mine.map((h) => h.seat_id), expiresAt: Math.min(...seats.mine.map((h) => h.expires_at)) }
+      : null,
+    isPast: parseLocal(show.starts_at) < new Date(),
+  });
+});
+
+/**
+ * Temporarily lock seats for the current user while they pay (like BookMyShow's 10-minute timer).
+ * Replaces any previous hold this user had on the same show.
+ */
+router.post('/:id/hold', requireAuth, (req, res) => {
+  const show = loadShow(toInt(req.params.id, 'show id'));
+  if (parseLocal(show.starts_at) < new Date()) throw badRequest('This show has already started');
+  const ids = normaliseSeats(req.body.seats);
+
+  const valid = seatMap(show.layout, show.price_factor);
+  const bad = ids.filter((id) => !valid.has(id));
+  if (bad.length) throw badRequest(`Seat(s) ${bad.join(', ')} do not exist`);
+
+  const expiresAt = Date.now() + config.seatHoldMinutes * 60 * 1000;
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM seat_holds WHERE show_id = ? AND (user_id = ? OR expires_at <= ?)').run(show.id, req.user.id, Date.now());
+    const { booked, heldByOthers } = unavailableSeats(show.id, req.user.id);
+    const taken = ids.filter((id) => booked.includes(id) || heldByOthers.includes(id));
+    if (taken.length) throw conflict(`Sorry, seat(s) ${taken.join(', ')} were just taken. Please pick others.`, { taken });
+    const ins = db.prepare('INSERT INTO seat_holds (show_id, seat_id, user_id, expires_at) VALUES (?, ?, ?, ?)');
+    for (const id of ids) ins.run(show.id, id, req.user.id, expiresAt);
+  })();
+
+  res.json({ seats: ids, expiresAt });
+});
+
+router.delete('/:id/hold', requireAuth, (req, res) => {
+  db.prepare('DELETE FROM seat_holds WHERE show_id = ? AND user_id = ?').run(toInt(req.params.id, 'show id'), req.user.id);
+  res.json({ ok: true });
+});
+
+export default router;
