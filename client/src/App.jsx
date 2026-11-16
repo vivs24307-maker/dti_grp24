@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
 import Navbar from './components/Navbar.jsx';
 import Footer from './components/Footer.jsx';
 import CityModal from './components/CityModal.jsx';
@@ -20,6 +20,19 @@ import Profile from './pages/Profile.jsx';
 import Offers from './pages/Offers.jsx';
 import Admin from './pages/Admin.jsx';
 import NotFound from './pages/NotFound.jsx';
+
+// three.js is big, so the 3D hall is only downloaded when someone actually opens a seat map
+const SeatExperience = lazy(() => import('./pages/SeatExperience.jsx'));
+
+function SeatsRoute() {
+  const [params] = useSearchParams();
+  if (params.get('view') === '2d') return <SeatLayout />;
+  return (
+    <Suspense fallback={<div className="stage-loading"><Loader label="Building the hall…" /></div>}>
+      <SeatExperience />
+    </Suspense>
+  );
+}
 
 function RequireAuth({ children, admin = false }) {
   const { user, loading } = useAuth();
@@ -57,7 +70,7 @@ export default function App() {
           <Route path="/offers" element={<Offers />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/shows/:id/seats" element={<SeatLayout />} />
+          <Route path="/shows/:id/seats" element={<SeatsRoute />} />
           <Route path="/checkout/:showId" element={<RequireAuth><Checkout /></RequireAuth>} />
           <Route path="/bookings" element={<RequireAuth><MyBookings /></RequireAuth>} />
           <Route path="/bookings/:code" element={<RequireAuth><Ticket /></RequireAuth>} />

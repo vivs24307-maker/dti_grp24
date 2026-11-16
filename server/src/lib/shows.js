@@ -57,6 +57,10 @@ export function ensureShows(db, days = config.showDaysAhead) {
 }
 
 /** Remove expired seat holds. */
-export function purgeExpiredHolds(db) {
-  return db.prepare('DELETE FROM seat_holds WHERE expires_at <= ?').run(Date.now()).changes;
+export function purgeExpiredHolds(db, onShow) {
+  const expired = db.prepare('SELECT DISTINCT show_id FROM seat_holds WHERE expires_at <= ?').all(Date.now());
+  if (!expired.length) return 0;
+  const { changes } = db.prepare('DELETE FROM seat_holds WHERE expires_at <= ?').run(Date.now());
+  if (onShow) expired.forEach((r) => onShow(r.show_id));
+  return changes;
 }

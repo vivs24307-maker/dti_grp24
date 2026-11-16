@@ -184,3 +184,28 @@ test('admin endpoints are protected', async () => {
   assert.equal(movie.status, 201);
   assert.deepEqual(movie.body.movie.genres, ['Drama', 'Comedy']);
 });
+
+test('live seat stream pushes an event when seats change', async () => {
+  const server = app.listen(0);
+  const { port } = server.address();
+  const ctrl = new AbortController();
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/shows/${showId}/stream`, { signal: ctrl.signal });
+    assert.equal(res.headers.get('content-type'), 'text/event-stream');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let text = decoder.decode((await reader.read()).value); // "retry: ..." preamble
+
+    await request(app).post(`/api/shows/${showId}/hold`).set('Authorization', `Bearer ${token}`).send({ seats: ['B3'] });
+    while (!text.includes('event: seats')) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      text += decoder.decode(chunk.value);
+    }
+    assert.match(text, /event: seats/);
+  } finally {
+    ctrl.abort();
+    server.closeAllConnections();
+    server.close();
+  }
+});

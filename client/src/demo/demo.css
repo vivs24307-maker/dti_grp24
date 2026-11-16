@@ -1,0 +1,8 @@
+/* The demo is a one-screen app that fills whatever frame it is shown in */
+html, body, #root { height: 100%; }
+body { overflow: hidden; }
+.stage { inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.demo-pill { color: #ffd9a8; background: rgba(40, 24, 8, 0.7); border-color: rgba(255, 176, 32, 0.4); }
+.demo-pill i { background: #ffb020; animation: none; }
+.demo-done { align-items: center; text-align: center; gap: 14px; }
+.demo-done .check { margin-bottom: 4px; }

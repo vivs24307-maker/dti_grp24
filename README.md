@@ -2,9 +2,39 @@
 
 CineVerse started as a set of static HTML pages for our DTI college project (Group 24).
 **v2 turns it into a full stack app** inspired by BookMyShow / District: a React frontend, an
-Express REST API and a SQLite database, with real seat locking, payments flow, QR tickets and an admin dashboard.
+Express REST API and a SQLite database, with an **immersive 3D seat picker**, real seat locking, live seat updates,
+a payments flow, QR tickets and an admin dashboard.
 
 > The original static version is kept in [`legacy/`](legacy/) for reference.
+
+---
+
+## 🧊 The 3D seat experience
+
+Choosing seats happens inside a real-time 3D cinema hall (three.js / WebGL — nothing to install, it runs in the browser):
+
+1. **Whole hall from above** – you land on a cut-away auditorium: screen, stepped rows, aisles with LED step lights.
+   Every block lights up with its **price and seats left** as you move the mouse. Drag to orbit, scroll to zoom.
+2. **Fly into a block** – one click and the camera glides down into that block. Pick seats one by one;
+   each seat shows its row, number, price and a **view score** (how centred / how far / how much you look up).
+3. **The ticket shows your exact view** – the moment you pick a seat, a ticket appears with a picture rendered
+   *from that seat*: the screen, the rows in front, even the heads of people who already booked. Nobody buys blind.
+4. **Sit down** – "Sit here" drops you into the seat in first person; the house lights dim, the projector beam
+   comes on and you can look around.
+5. **Flip to upgrade** – hit *Upgrade* and the ticket flips over to its gold side, the camera flies to the
+   recliners / sofas, and you see the VIP view and the price difference before deciding.
+6. **Best seats** – choose how many people, press ✨ and it finds the best neighbouring seats in the house.
+7. **Live** – seats taken by other people turn grey (and get a silhouette) in real time via Server-Sent Events.
+
+Taken seats are filled with an audience, the lights can be toggled, and on slow devices the render resolution
+drops automatically. No WebGL? The app falls back to the classic 2D map (also reachable from the **2D** button).
+
+`client/src/three/hallLayout.js` turns the seat-layout JSON into 3D positions, blocks, view scores and
+best-seat / upgrade suggestions; `client/src/three/CinemaScene.js` is the renderer (camera flights, picking,
+snapshots); `client/src/components/SeatStage.jsx` is the React UI around it.
+
+**Standalone demo:** `npm run build:demo --prefix client` produces `client/dist-demo/cineverse-3d-demo.html` —
+one self-contained file (no server) that you can double-click, email or host anywhere.
 
 ---
 
@@ -17,8 +47,9 @@ Express REST API and a SQLite database, with real seat locking, payments flow, Q
 - **Showtimes** – 7-day date strip, shows grouped by cinema, language/format filters (2D / 3D / IMAX / 4DX),
   colour-coded availability (*available / filling fast / almost full*).
 - **Cinemas** – browse cinemas in your city and see everything playing at one cinema.
-- **Interactive seat map** – Sofa / Recliner / Premium / Classic tiers with different prices, aisles, live sold seats
-  (refreshes every 15s), and "pick N seats" auto-selection like real ticketing apps.
+- **3D seat picker** (see above) plus a classic **2D seat map** – Sofa / Recliner / Premium / Classic tiers with
+  different prices, aisles, and "pick N seats" auto-selection like real ticketing apps.
+- **Live seat updates** – the server pushes changes over Server-Sent Events the moment anyone holds, books or cancels.
 - **Seat holds** – seats are locked for **10 minutes** while you pay, so two people can never buy the same seat.
 - **Checkout** – food & beverage pre-order, coupon codes, convenience fee + GST, payment method selection (simulated), countdown timer.
 - **M-Ticket** – booking confirmation with a **QR code**, printable / save as PDF.
@@ -40,7 +71,8 @@ Express REST API and a SQLite database, with real seat locking, payments flow, Q
 | Layer     | Tech |
 |-----------|------|
 | Frontend  | React 19, React Router 7, Vite 8, plain CSS (custom design system, responsive) |
-| Backend   | Node.js 22+, Express 5, JWT auth, bcrypt password hashing, Helmet, rate limiting |
+| 3D        | three.js (WebGL): instanced seats, camera flights, raycast picking, render-to-ticket snapshots |
+| Backend   | Node.js 22+, Express 5, JWT auth, bcrypt password hashing, Helmet, rate limiting, Server-Sent Events |
 | Database  | SQLite via `better-sqlite3` (zero setup — the DB file is created automatically) |
 | Tests     | Node's built-in test runner + Supertest (API integration tests) |
 
@@ -78,6 +110,7 @@ for the next 7 days and topped up every hour, so the demo never "runs out" of sh
 npm test          # run API tests
 npm run seed      # wipe the database and re-seed demo data
 npm run build     # build the React app into client/dist
+npm run build:demo --prefix client   # single-file standalone 3D demo
 npm start         # run the API; it also serves client/dist if it was built (single server, port 5000)
 ```
 
@@ -91,8 +124,10 @@ Configuration (optional): copy `server/.env.example` to `server/.env` and change
 dti_grp24/
 ├── client/                 React frontend (Vite)
 │   └── src/
-│       ├── pages/          Home, Movies, MovieDetail, Showtimes, SeatLayout, Checkout, Ticket, Admin, ...
-│       ├── components/     Navbar, Footer, CityModal, shared UI (MovieCard, Modal, Loader, ...)
+│       ├── pages/          Home, Movies, MovieDetail, Showtimes, SeatExperience (3D), SeatLayout (2D), Checkout, ...
+│       ├── three/          3D hall: hallLayout.js (geometry + scoring), CinemaScene.js (three.js renderer)
+│       ├── components/     SeatStage (3D seat picker UI), Navbar, Footer, CityModal, shared UI
+│       ├── demo/           standalone 3D demo entry (no backend)
 │       ├── context/        Auth, City and Toast React contexts
 │       ├── api.js          fetch wrapper (adds JWT, handles errors)
 │       └── styles.css      design system + all styles
@@ -137,6 +172,7 @@ coupons, food_items
 | GET  | `/api/theatres?city=`, `/api/theatres/:id?date=` | Cinemas |
 | GET  | `/api/shows/:id` | Seat layout + unavailable seats |
 | POST/DELETE | `/api/shows/:id/hold` | Hold / release seats |
+| GET  | `/api/shows/:id/stream` | Live seat changes (Server-Sent Events) |
 | POST | `/api/bookings/preview` | Price breakdown |
 | POST | `/api/bookings` | Confirm booking |
 | GET  | `/api/bookings`, `/api/bookings/:code` | My bookings / one ticket |

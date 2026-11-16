@@ -7,6 +7,7 @@ import { loadShow, normaliseSeats, unavailableSeats } from '../lib/booking.js';
 import { seatMap } from '../lib/pricing.js';
 import { parseLocal } from '../lib/time.js';
 import { toInt } from '../lib/validate.js';
+import { notifySeats, onSeatsChanged } from '../lib/events.js';
 
 const router = Router();
 
@@ -57,12 +58,34 @@ router.post('/:id/hold', requireAuth, (req, res) => {
     for (const id of ids) ins.run(show.id, id, req.user.id, expiresAt);
   })();
 
+  notifySeats(show.id);
   res.json({ seats: ids, expiresAt });
 });
 
 router.delete('/:id/hold', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM seat_holds WHERE show_id = ? AND user_id = ?').run(toInt(req.params.id, 'show id'), req.user.id);
+  const showId = toInt(req.params.id, 'show id');
+  db.prepare('DELETE FROM seat_holds WHERE show_id = ? AND user_id = ?').run(showId, req.user.id);
+  notifySeats(showId);
   res.json({ ok: true });
+});
+
+/**
+ * Live seat updates (Server-Sent Events). The stream only says "something changed";
+ * the client then re-fetches GET /shows/:id, so no private data ever travels over it.
+ */
+router.get('/:id/stream', (req, res) => {
+  const showId = toInt(req.params.id, 'show id');
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('retry: 4000\n\n');
+  const send = () => res.write(`event: seats\ndata: ${Date.now()}\n\n`);
+  const off = onSeatsChanged(showId, send);
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
+  req.on('close', () => { off(); clearInterval(heartbeat); });
 });
 
 export default router;

@@ -1,5 +1,6 @@
 // Tiny fetch wrapper: adds the JWT, parses JSON and turns API errors into thrown Errors.
-const BASE = import.meta.env.VITE_API_URL || '/api';
+export const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const BASE = API_BASE;
 const TOKEN_KEY = 'cineverse_token';
 
 export const tokenStore = {

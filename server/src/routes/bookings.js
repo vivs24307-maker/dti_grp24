@@ -8,6 +8,7 @@ import { quote } from '../lib/pricing.js';
 import { formatBooking } from '../lib/format.js';
 import { parseLocal } from '../lib/time.js';
 import { toInt } from '../lib/validate.js';
+import { notifySeats } from '../lib/events.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -65,6 +66,7 @@ router.post('/', (req, res) => {
     return info.lastInsertRowid;
   })();
 
+  notifySeats(show.id);
   const booking = formatBooking(db.prepare(`${BOOKING_SELECT} WHERE b.id = ?`).get(bookingId));
   res.status(201).json({ booking, perks: q.perks });
 });
@@ -99,6 +101,7 @@ router.post('/:code/cancel', (req, res) => {
     db.prepare("UPDATE bookings SET status = 'CANCELLED', refund_amount = ?, cancelled_at = datetime('now') WHERE id = ?").run(refund, booking.id);
     db.prepare('DELETE FROM booked_seats WHERE booking_id = ?').run(booking.id);
   })();
+  notifySeats(booking.show_id);
 
   res.json({ booking: formatBooking(db.prepare(`${BOOKING_SELECT} WHERE b.id = ?`).get(booking.id)), refund });
 });
