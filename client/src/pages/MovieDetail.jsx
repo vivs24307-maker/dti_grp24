@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { Play, Ticket } from 'lucide-react';
 import { api } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useCity } from '../context/CityContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { Cert, Empty, ErrorBox, Loader, Poster, RatingBadge, useAsync } from '../components/ui.jsx';
 import { fmtDate, fmtDuration } from '../utils.js';
+import TrailerModal from '../components/TrailerModal.jsx';
 
 function ReviewForm({ movieId, mine, onSaved }) {
   const toast = useToast();
@@ -49,6 +51,7 @@ export default function MovieDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const { citySlug } = useCity();
+  const [trailerOpen, setTrailerOpen] = useState(false);
   const movieQ = useAsync(() => api.get(`/movies/${id}?city=${citySlug}`), [id, citySlug]);
   const reviewsQ = useAsync(() => api.get(`/movies/${id}/reviews`), [id, user?.id]);
 
@@ -84,14 +87,31 @@ export default function MovieDetail() {
               <span>{fmtDuration(m.duration_min)}</span>·<span>{m.genres.join(', ')}</span>·<Cert value={m.certificate} />
               {m.release_date && <>·<span>{fmtDate(m.release_date, { day: 'numeric', month: 'short', year: 'numeric' })}</span></>}
             </p>
-            {m.status === 'now_showing' ? (
-              <Link to={`/movies/${m.slug}/tickets`} className="btn btn-primary btn-lg">Book tickets</Link>
-            ) : (
-              <span className="pill">Releasing soon</span>
-            )}
+            <div className="hero-actions" style={{ marginTop: '1.25rem' }}>
+              {m.status === 'now_showing' ? (
+                <Link to={`/movies/${m.slug}/tickets`} className="btn btn-primary btn-lg">
+                  <Ticket size={18} /> Book tickets
+                </Link>
+              ) : (
+                <span className="pill">Releasing soon</span>
+              )}
+              {m.trailer_url && (
+                <button className="btn btn-ghost btn-lg" onClick={() => setTrailerOpen(true)}>
+                  <Play size={18} /> Watch Trailer
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </section>
+
+      {trailerOpen && (
+        <TrailerModal
+          trailerUrl={m.trailer_url}
+          title={m.title}
+          onClose={() => setTrailerOpen(false)}
+        />
+      )}
 
       <div className="container section detail-grid">
         <div>

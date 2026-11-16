@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
 import Navbar from './components/Navbar.jsx';
+import BottomNav from './components/BottomNav.jsx';
 import Footer from './components/Footer.jsx';
 import CityModal from './components/CityModal.jsx';
 import { Loader } from './components/ui.jsx';
@@ -26,7 +27,10 @@ const SeatExperience = lazy(() => import('./pages/SeatExperience.jsx'));
 
 function SeatsRoute() {
   const [params] = useSearchParams();
-  if (params.get('view') === '2d') return <SeatLayout />;
+  const preferredView = typeof window !== 'undefined' ? localStorage.getItem('cineverse_preferred_view') : null;
+  // If view=2d in query or user explicitly chose 2d lite mode, render SeatLayout
+  const is2d = params.get('view') === '2d' || (!params.get('view') && preferredView === '2d');
+  if (is2d) return <SeatLayout />;
   return (
     <Suspense fallback={<div className="stage-loading"><Loader label="Building the hall…" /></div>}>
       <SeatExperience />
@@ -80,6 +84,7 @@ export default function App() {
         </Routes>
       </main>
       {!focused && <Footer />}
+      <BottomNav />
       <CityModal />
     </>
   );

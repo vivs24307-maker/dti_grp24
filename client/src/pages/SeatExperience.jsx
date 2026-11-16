@@ -33,7 +33,10 @@ export default function SeatExperience() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const classic = () => navigate(`/shows/${id}/seats?view=2d`, { replace: true });
+  const classic = () => {
+    try { localStorage.setItem('cineverse_preferred_view', '2d'); } catch { /* ignore */ }
+    navigate(`/shows/${id}/seats?view=2d`, { replace: true });
+  };
 
   if (q.loading && !q.data) return <div className="stage-loading"><Loader label="Building the hall…" /></div>;
   if (q.error) return <div className="container section"><ErrorBox error={q.error} onRetry={q.reload} /></div>;

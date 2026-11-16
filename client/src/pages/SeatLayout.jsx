@@ -134,7 +134,10 @@ export default function SeatLayout() {
             {show.theatre_name} | {fmtDate(show.starts_at)}, {fmtTime(show.starts_at)} | {show.screen_name} · {show.format} · {show.language}
           </p>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/shows/${id}/seats`, { replace: true })}>🧊 3D view</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => {
+          try { localStorage.setItem('cineverse_preferred_view', '3d'); } catch { /* ignore */ }
+          navigate(`/shows/${id}/seats`, { replace: true });
+        }}>🧊 3D view</button>
         <button className="btn btn-ghost btn-sm" onClick={() => setAskCount(true)}>{count || '–'} Tickets ✎</button>
       </header>
 
