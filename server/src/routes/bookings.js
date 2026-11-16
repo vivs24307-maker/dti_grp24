@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { config } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
+import { bookingLimiter } from '../middleware/rateLimit.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { BOOKING_SELECT, loadShow, newBookingCode, normaliseSeats } from '../lib/booking.js';
 import { quote } from '../lib/pricing.js';
@@ -30,7 +31,7 @@ router.post('/preview', (req, res) => {
 });
 
 /** Confirm a booking. The seats must currently be held by this user. */
-router.post('/', (req, res) => {
+router.post('/', bookingLimiter, (req, res) => {
   const { show, seatIds, q } = buildQuote(req);
   const method = String(req.body.paymentMethod || '').toUpperCase();
   if (!PAYMENT_METHODS.includes(method)) throw badRequest('Please choose a payment method');

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { config } from '../config.js';
 import { optionalAuth, requireAuth } from '../middleware/auth.js';
+import { holdLimiter } from '../middleware/rateLimit.js';
 import { badRequest, conflict } from '../lib/errors.js';
 import { loadShow, normaliseSeats, unavailableSeats } from '../lib/booking.js';
 import { seatMap } from '../lib/pricing.js';
@@ -38,7 +39,7 @@ router.get('/:id', optionalAuth, (req, res) => {
  * Temporarily lock seats for the current user while they pay (like BookMyShow's 10-minute timer).
  * Replaces any previous hold this user had on the same show.
  */
-router.post('/:id/hold', requireAuth, (req, res) => {
+router.post('/:id/hold', requireAuth, holdLimiter, (req, res) => {
   const show = loadShow(toInt(req.params.id, 'show id'));
   if (parseLocal(show.starts_at) < new Date()) throw badRequest('This show has already started');
   const ids = normaliseSeats(req.body.seats);

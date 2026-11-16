@@ -20,7 +20,10 @@ export function createApp() {
   const app = express();
 
   app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-  app.use(cors({ origin: config.clientOrigin.split(','), credentials: true }));
+  // Auth lives in an httpOnly cookie, so browsers must be allowed to send credentials -
+  // which in turn requires an explicit origin allow-list (never '*').
+  const origins = config.clientOrigin.split(',').map((o) => o.trim()).filter(Boolean);
+  app.use(cors({ origin: origins, credentials: true }));
   app.use(express.json({ limit: '100kb' }));
   if (!config.isTest) app.use(morgan(config.isProd ? 'combined' : 'dev'));
 

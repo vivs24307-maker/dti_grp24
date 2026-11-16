@@ -13,9 +13,36 @@ export function publicUser(u) {
   return rest;
 }
 
+const cookieOptions = () => ({
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: config.isProd,
+  path: '/',
+});
+
+/** Signs the user in by setting the session cookie. The token never reaches page JavaScript. */
+export function setAuthCookie(res, user) {
+  const token = signToken(user);
+  const { exp } = jwt.decode(token);
+  res.cookie(config.authCookieName, token, { ...cookieOptions(), expires: new Date(exp * 1000) });
+}
+
+export function clearAuthCookie(res) {
+  res.clearCookie(config.authCookieName, cookieOptions());
+}
+
+function readCookie(req, name) {
+  for (const part of (req.headers.cookie || '').split(';')) {
+    const eq = part.indexOf('=');
+    if (eq > 0 && part.slice(0, eq).trim() === name) {
+      try { return decodeURIComponent(part.slice(eq + 1).trim()); } catch { return null; }
+    }
+  }
+  return null;
+}
+
 function loadUser(req) {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const token = readCookie(req, config.authCookieName);
   if (!token) return null;
   try {
     const payload = jwt.verify(token, config.jwtSecret);

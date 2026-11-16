@@ -1,17 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api, tokenStore } from '../api.js';
+import { api } from '../api.js';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(Boolean(tokenStore.get()));
+  const [loading, setLoading] = useState(true);
 
+  // The session cookie is httpOnly, so the only way to know if we're signed in is to ask the server.
   useEffect(() => {
-    if (!tokenStore.get()) return;
     api.get('/auth/me')
       .then((d) => setUser(d.user))
-      .catch(() => tokenStore.clear())
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
@@ -22,7 +22,6 @@ export function AuthProvider({ children }) {
   }, []);
 
   const handleAuth = (data) => {
-    tokenStore.set(data.token);
     setUser(data.user);
     return data.user;
   };
@@ -30,8 +29,8 @@ export function AuthProvider({ children }) {
   const login = useCallback((email, password) => api.post('/auth/login', { email, password }).then(handleAuth), []);
   const register = useCallback((payload) => api.post('/auth/register', payload).then(handleAuth), []);
   const logout = useCallback(() => {
-    tokenStore.clear();
     setUser(null);
+    return api.post('/auth/logout').catch(() => {});
   }, []);
 
   const value = useMemo(() => ({ user, setUser, loading, login, register, logout }), [user, loading, login, register, logout]);

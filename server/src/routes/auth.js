@@ -3,9 +3,9 @@ import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db.js';
 import { config } from '../config.js';
-import { publicUser, requireAuth, signToken } from '../middleware/auth.js';
+import { clearAuthCookie, publicUser, requireAuth, setAuthCookie } from '../middleware/auth.js';
 import { badRequest, conflict, unauthorized } from '../lib/errors.js';
-import { cleanString, isEmail, requireFields } from '../lib/validate.js';
+import { assertStrongPassword, cleanString, isEmail, requireFields } from '../lib/validate.js';
 
 const router = Router();
 
@@ -25,7 +25,7 @@ router.post('/register', authLimiter, (req, res) => {
   const { password } = req.body;
 
   if (!isEmail(email)) throw badRequest('Please enter a valid email');
-  if (String(password).length < 6) throw badRequest('Password must be at least 6 characters');
+  assertStrongPassword(password);
   if (phone && !/^[0-9+\-\s]{7,15}$/.test(phone)) throw badRequest('Please enter a valid phone number');
   if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(email)) {
     throw conflict('An account with this email already exists');
@@ -36,7 +36,8 @@ router.post('/register', authLimiter, (req, res) => {
     .prepare('INSERT INTO users (name, email, phone, password_hash, city_id) VALUES (?, ?, ?, ?, ?)')
     .run(name, email, phone, bcrypt.hashSync(String(password), 10), cityId);
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
-  res.status(201).json({ token: signToken(user), user: publicUser(user) });
+  setAuthCookie(res, user);
+  res.status(201).json({ user: publicUser(user) });
 });
 
 router.post('/login', authLimiter, (req, res) => {
@@ -46,7 +47,13 @@ router.post('/login', authLimiter, (req, res) => {
   if (!user || !bcrypt.compareSync(String(req.body.password), user.password_hash)) {
     throw unauthorized('Incorrect email or password');
   }
-  res.json({ token: signToken(user), user: publicUser(user) });
+  setAuthCookie(res, user);
+  res.json({ user: publicUser(user) });
+});
+
+router.post('/logout', (_req, res) => {
+  clearAuthCookie(res);
+  res.json({ ok: true });
 });
 
 router.get('/me', requireAuth, (req, res) => {

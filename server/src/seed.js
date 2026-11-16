@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { pathToFileURL } from 'node:url';
 import * as data from './seedData.js';
+import { config } from './config.js';
 import { getMeta, setMeta } from './db.js';
 import { ensureShows, PROGRAMME_VERSION, clearUnsoldFutureShows } from './lib/shows.js';
 import { normaliseTech } from './lib/formats.js';
@@ -10,7 +11,7 @@ export const slugify = (s) =>
 
 const TABLES = ['booked_seats', 'bookings', 'seat_holds', 'reviews', 'shows', 'screens', 'theatres', 'movies', 'users', 'cities', 'coupons', 'food_items'];
 
-export function seed(db, { reset = false } = {}) {
+export function seed(db, { reset = false, demoAccounts = !config.isProd } = {}) {
   if (reset) {
     db.transaction(() => {
       for (const t of TABLES) db.prepare(`DELETE FROM ${t}`).run();
@@ -45,22 +46,27 @@ export function seed(db, { reset = false } = {}) {
                                   VALUES (@code, @description, @type, @value, @max_discount, @min_amount)`);
     for (const c of data.coupons) insCoupon.run(c);
 
-    const insUser = db.prepare(`INSERT INTO users (name, email, password_hash, role, plan, city_id)
-                                VALUES (?, ?, ?, ?, ?, ?)`);
-    for (const u of data.users) {
-      insUser.run(u.name, u.email, bcrypt.hashSync(u.password, 10), u.role, u.plan, cityIds.mumbai);
-    }
+    // The demo logins have well-known passwords, so they are never created in production.
+    if (demoAccounts) {
+      const insUser = db.prepare(`INSERT INTO users (name, email, password_hash, role, plan, city_id)
+                                  VALUES (?, ?, ?, ?, ?, ?)`);
+      const userIds = {};
+      for (const u of data.users) {
+        userIds[u.email] = insUser.run(u.name, u.email, bcrypt.hashSync(u.password, 10), u.role, u.plan, cityIds.mumbai).lastInsertRowid;
+      }
 
-    // A few starter reviews so ratings aren't empty on a fresh install
-    const insReview = db.prepare('INSERT INTO reviews (movie_id, user_id, rating, comment) VALUES (?, ?, ?, ?)');
-    const starters = [
-      [1, 2, 9, 'Gripping from start to end. Ranveer is in top form!'],
-      [12, 2, 9, 'Watch it in IMAX. The sound design is unreal.'],
-      [18, 2, 10, 'Still gives me goosebumps every single time.'],
-      [10, 2, 9, 'Restart. Such an inspiring story.'],
-      [5, 2, 8, 'Funny and scary at the same time.'],
-    ];
-    for (const r of starters) insReview.run(...r);
+      // A few starter reviews (by the demo user) so ratings aren't empty on a fresh install
+      const demoId = userIds['demo@cineverse.com'];
+      const insReview = db.prepare('INSERT INTO reviews (movie_id, user_id, rating, comment) VALUES (?, ?, ?, ?)');
+      const starters = [
+        [1, 9, 'Gripping from start to end. Ranveer is in top form!'],
+        [12, 9, 'Watch it in IMAX. The sound design is unreal.'],
+        [18, 10, 'Still gives me goosebumps every single time.'],
+        [10, 9, 'Restart. Such an inspiring story.'],
+        [5, 8, 'Funny and scary at the same time.'],
+      ];
+      for (const [movieId, rating, comment] of starters) insReview.run(movieId, demoId, rating, comment);
+    }
   })();
 
   setMeta(db, 'programme_version', PROGRAMME_VERSION);
@@ -135,5 +141,6 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   seed(db, { reset: process.argv.includes('--reset') });
   const count = (t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
   console.log(`Seeded: ${count('cities')} cities, ${count('theatres')} theatres, ${count('movies')} movies, ${count('shows')} shows`);
-  console.log('Logins -> admin@cineverse.com / admin123   |   demo@cineverse.com / demo123');
+  if (config.isProd) console.log('Production mode: demo accounts were not created.');
+  else console.log('Logins -> admin@cineverse.com / admin123   |   demo@cineverse.com / demo123');
 }

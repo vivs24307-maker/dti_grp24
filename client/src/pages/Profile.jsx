@@ -105,7 +105,7 @@ export default function Profile() {
         <h3>Change password</h3>
         <form className="form" onSubmit={changePw}>
           <label>Current password<input type="password" required value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} /></label>
-          <label>New password<input type="password" required minLength={6} value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} /></label>
+          <label>New password<input type="password" required minLength={8} value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} /></label>
           <button className="btn btn-ghost">Update password</button>
         </form>
       </section>

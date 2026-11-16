@@ -4,7 +4,7 @@ import { db } from '../db.js';
 import { config } from '../config.js';
 import { publicUser, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../lib/errors.js';
-import { cleanString } from '../lib/validate.js';
+import { assertStrongPassword, cleanString } from '../lib/validate.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -36,7 +36,7 @@ router.post('/me/password', (req, res) => {
   if (!bcrypt.compareSync(String(currentPassword || ''), req.user.password_hash)) {
     throw badRequest('Current password is incorrect');
   }
-  if (!newPassword || String(newPassword).length < 6) throw badRequest('New password must be at least 6 characters');
+  assertStrongPassword(newPassword, 'New password');
   db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(String(newPassword), 10), req.user.id);
   res.json({ ok: true });
 });

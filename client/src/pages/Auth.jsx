@@ -83,6 +83,9 @@ export function Register() {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (form.password.length < 8 || !/[A-Za-z]/.test(form.password) || !/[0-9]/.test(form.password)) {
+      return setError('Password must be at least 8 characters and include a letter and a number');
+    }
     if (form.password !== form.confirm) return setError('Passwords do not match');
     setBusy(true);
     setError('');
@@ -106,7 +109,7 @@ export function Register() {
         <label>Email<input type="email" required value={form.email} onChange={set('email')} autoComplete="email" /></label>
         <label>Phone <small className="muted">(optional)</small><input type="tel" value={form.phone} onChange={set('phone')} autoComplete="tel" /></label>
         <div className="form-row">
-          <label>Password<input type="password" required minLength={6} value={form.password} onChange={set('password')} autoComplete="new-password" /></label>
+          <label>Password<input type="password" required minLength={8} value={form.password} onChange={set('password')} autoComplete="new-password" /></label>
           <label>Confirm<input type="password" required value={form.confirm} onChange={set('confirm')} autoComplete="new-password" /></label>
         </div>
         {error && <p className="form-error">{error}</p>}

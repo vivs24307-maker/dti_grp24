@@ -1,13 +1,10 @@
-// Tiny fetch wrapper: adds the JWT, parses JSON and turns API errors into thrown Errors.
+// Tiny fetch wrapper: sends the session cookie, parses JSON and turns API errors into thrown Errors.
+// The login token lives in an httpOnly cookie set by the server, so page scripts never see it.
 export const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const BASE = API_BASE;
-const TOKEN_KEY = 'cineverse_token';
 
-export const tokenStore = {
-  get: () => localStorage.getItem(TOKEN_KEY),
-  set: (t) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
-};
+// Older versions kept the token in localStorage; make sure none is left lying around.
+try { localStorage.removeItem('cineverse_token'); } catch { /* storage unavailable */ }
 
 export class ApiError extends Error {
   constructor(status, message, details) {
@@ -19,22 +16,23 @@ export class ApiError extends Error {
 
 async function request(method, path, body) {
   const headers = { Accept: 'application/json' };
-  const token = tokenStore.get();
-  if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   let res;
   try {
-    res = await fetch(`${BASE}${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      credentials: 'include',
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
   } catch {
     throw new ApiError(0, 'Cannot reach the server. Is the backend running?');
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (res.status === 401 && token) {
-      tokenStore.clear();
-      window.dispatchEvent(new Event('cineverse:logout'));
-    }
+    // The session expired or was never there: make sure the UI stops showing a signed-in user.
+    if (res.status === 401) window.dispatchEvent(new Event('cineverse:logout'));
     throw new ApiError(res.status, data.error || `Request failed (${res.status})`, data.details);
   }
   return data;

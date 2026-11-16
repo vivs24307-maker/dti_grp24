@@ -4,13 +4,16 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 
-const { db } = await import('../src/db.js');
+const { db, openDb } = await import('../src/db.js');
 const { seed } = await import('../src/seed.js');
 const { createApp } = await import('../src/app.js');
+const { config, resolveJwtSecret } = await import('../src/config.js');
 
 const app = createApp();
-let token;
-let token2;
+// Each agent keeps its own cookie jar, i.e. behaves like one signed-in browser.
+const riya = request.agent(app);
+const kabir = request.agent(app);
+const admin = request.agent(app);
 let showId;
 let seatIds;
 
@@ -24,30 +27,103 @@ test('health check', async () => {
   assert.equal(res.body.ok, true);
 });
 
-test('register + login + me', async () => {
+test('production refuses to boot without a real JWT secret', () => {
+  assert.throws(() => resolveJwtSecret({ NODE_ENV: 'production' }), /JWT_SECRET/);
+  assert.throws(() => resolveJwtSecret({ NODE_ENV: 'production', JWT_SECRET: '   ' }), /JWT_SECRET/);
+  assert.throws(() => resolveJwtSecret({ NODE_ENV: 'production', JWT_SECRET: 'cineverse-dev-secret-change-me' }), /JWT_SECRET/);
+  assert.throws(() => resolveJwtSecret({ NODE_ENV: 'production', JWT_SECRET: 'change-me-to-a-long-random-string' }), /JWT_SECRET/);
+  assert.equal(resolveJwtSecret({ NODE_ENV: 'production', JWT_SECRET: 'a-real-long-random-secret' }), 'a-real-long-random-secret');
+  // Development keeps working out of the box
+  assert.equal(resolveJwtSecret({}), 'cineverse-dev-secret-change-me');
+});
+
+test('demo accounts are only seeded outside production', () => {
+  const emails = (d) => d.prepare('SELECT email FROM users ORDER BY id').all().map((u) => u.email);
+  assert.deepEqual(emails(db), ['admin@cineverse.com', 'demo@cineverse.com']);
+
+  const prodDb = openDb(':memory:');
+  try {
+    seed(prodDb, { demoAccounts: false });
+    assert.deepEqual(emails(prodDb), []);
+    assert.equal(prodDb.prepare('SELECT COUNT(*) AS n FROM reviews').get().n, 0);
+    assert.ok(prodDb.prepare('SELECT COUNT(*) AS n FROM movies').get().n > 0, 'the catalogue is still seeded');
+  } finally {
+    prodDb.close();
+  }
+});
+
+test('registration enforces password strength', async () => {
+  const attempt = (password) => request(app).post('/api/auth/register')
+    .send({ name: 'Weak', email: 'weak@test.com', password });
+  for (const password of ['short1', 'abcdefghij', '1234567890']) {
+    const res = await attempt(password);
+    assert.equal(res.status, 400, `"${password}" should be rejected`);
+    assert.match(res.body.error, /Password must/);
+  }
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM users WHERE email = 'weak@test.com'").get().n, 0);
+});
+
+test('register + login + me use an httpOnly session cookie', async () => {
   const reg = await request(app).post('/api/auth/register')
-    .send({ name: 'Riya', email: 'riya@test.com', password: 'secret1' });
+    .send({ name: 'Riya', email: 'riya@test.com', password: 'secret123' });
   assert.equal(reg.status, 201);
-  assert.ok(reg.body.token);
+  assert.equal(reg.body.token, undefined, 'the token must not be exposed to page scripts');
   assert.equal(reg.body.user.password_hash, undefined);
+  const cookie = reg.headers['set-cookie'].find((c) => c.startsWith(`${config.authCookieName}=`));
+  assert.ok(cookie, 'expected a session cookie');
+  assert.match(cookie, /HttpOnly/i);
+  assert.match(cookie, /SameSite=Lax/i);
+  assert.match(cookie, /Expires=/i);
 
   const dup = await request(app).post('/api/auth/register')
-    .send({ name: 'Riya', email: 'RIYA@test.com', password: 'secret1' });
+    .send({ name: 'Riya', email: 'RIYA@test.com', password: 'secret123' });
   assert.equal(dup.status, 409);
 
-  const bad = await request(app).post('/api/auth/login').send({ email: 'riya@test.com', password: 'nope' });
+  const bad = await riya.post('/api/auth/login').send({ email: 'riya@test.com', password: 'nope' });
   assert.equal(bad.status, 401);
+  assert.equal(bad.headers['set-cookie'], undefined);
 
-  const login = await request(app).post('/api/auth/login').send({ email: 'riya@test.com', password: 'secret1' });
+  const login = await riya.post('/api/auth/login').send({ email: 'riya@test.com', password: 'secret123' });
   assert.equal(login.status, 200);
-  token = login.body.token;
+  assert.equal(login.body.token, undefined);
 
-  const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+  const me = await riya.get('/api/auth/me');
   assert.equal(me.body.user.email, 'riya@test.com');
 
-  const other = await request(app).post('/api/auth/register')
-    .send({ name: 'Kabir', email: 'kabir@test.com', password: 'secret2' });
-  token2 = other.body.token;
+  // No cookie, a forged cookie, or a Bearer header are all anonymous
+  assert.equal((await request(app).get('/api/auth/me')).status, 401);
+  assert.equal((await request(app).get('/api/auth/me').set('Cookie', `${config.authCookieName}=not-a-jwt`)).status, 401);
+  const token = cookie.split(';')[0].split('=')[1];
+  assert.equal((await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`)).status, 401);
+
+  const other = await kabir.post('/api/auth/register')
+    .send({ name: 'Kabir', email: 'kabir@test.com', password: 'secret456' });
+  assert.equal(other.status, 201);
+});
+
+test('logout clears the session cookie', async () => {
+  const browser = request.agent(app);
+  await browser.post('/api/auth/login').send({ email: 'demo@cineverse.com', password: 'demo123' });
+  assert.equal((await browser.get('/api/auth/me')).status, 200);
+  const out = await browser.post('/api/auth/logout');
+  assert.equal(out.status, 200);
+  assert.equal((await browser.get('/api/auth/me')).status, 401);
+});
+
+test('CORS allows credentials only for the configured origin', async () => {
+  const ok = await request(app).get('/api/health').set('Origin', config.clientOrigin);
+  assert.equal(ok.headers['access-control-allow-origin'], config.clientOrigin);
+  assert.equal(ok.headers['access-control-allow-credentials'], 'true');
+
+  const evil = await request(app).get('/api/health').set('Origin', 'https://evil.example');
+  assert.equal(evil.headers['access-control-allow-origin'], undefined);
+});
+
+test('changing password enforces the same strength rules', async () => {
+  const weak = await kabir.post('/api/users/me/password').send({ currentPassword: 'secret456', newPassword: 'short' });
+  assert.equal(weak.status, 400);
+  const ok = await kabir.post('/api/users/me/password').send({ currentPassword: 'secret456', newPassword: 'secret789' });
+  assert.equal(ok.status, 200);
 });
 
 test('movie catalogue with filters', async () => {
@@ -88,27 +164,24 @@ test('seat holds prevent double booking', async () => {
   const unauth = await request(app).post(`/api/shows/${showId}/hold`).send({ seats: seatIds });
   assert.equal(unauth.status, 401);
 
-  const hold = await request(app).post(`/api/shows/${showId}/hold`)
-    .set('Authorization', `Bearer ${token}`).send({ seats: seatIds });
+  const hold = await riya.post(`/api/shows/${showId}/hold`).send({ seats: seatIds });
   assert.equal(hold.status, 200);
 
-  const clash = await request(app).post(`/api/shows/${showId}/hold`)
-    .set('Authorization', `Bearer ${token2}`).send({ seats: [seatIds[1]] });
+  const clash = await kabir.post(`/api/shows/${showId}/hold`).send({ seats: [seatIds[1]] });
   assert.equal(clash.status, 409);
 
-  const view = await request(app).get(`/api/shows/${showId}`).set('Authorization', `Bearer ${token2}`);
+  const view = await kabir.get(`/api/shows/${showId}`);
   assert.ok(seatIds.every((s) => view.body.unavailable.includes(s)));
 
-  const bogus = await request(app).post(`/api/shows/${showId}/hold`)
-    .set('Authorization', `Bearer ${token}`).send({ seats: ['Z99'] });
+  const bogus = await riya.post(`/api/shows/${showId}/hold`).send({ seats: ['Z99'] });
   assert.equal(bogus.status, 400);
 });
 
 test('preview and confirm booking with coupon + food', async () => {
   // Re-hold (the bogus request above didn't touch the previous hold)
-  await request(app).post(`/api/shows/${showId}/hold`).set('Authorization', `Bearer ${token}`).send({ seats: seatIds });
+  await riya.post(`/api/shows/${showId}/hold`).send({ seats: seatIds });
 
-  const preview = await request(app).post('/api/bookings/preview').set('Authorization', `Bearer ${token}`)
+  const preview = await riya.post('/api/bookings/preview')
     .send({ showId, seats: seatIds, food: [{ id: 1, qty: 2 }], coupon: 'STUDENT20' });
   assert.equal(preview.status, 200);
   const q = preview.body.quote;
@@ -116,70 +189,64 @@ test('preview and confirm booking with coupon + food', async () => {
   assert.ok(q.couponDiscount > 0);
   assert.equal(q.total, Math.round((q.ticketAmount + q.foodAmount + q.convenienceFee - q.discount) * 100) / 100);
 
-  const badCoupon = await request(app).post('/api/bookings/preview').set('Authorization', `Bearer ${token}`)
-    .send({ showId, seats: seatIds, coupon: 'NOPE' });
+  const badCoupon = await riya.post('/api/bookings/preview').send({ showId, seats: seatIds, coupon: 'NOPE' });
   assert.equal(badCoupon.status, 400);
 
-  const noPay = await request(app).post('/api/bookings').set('Authorization', `Bearer ${token}`)
-    .send({ showId, seats: seatIds });
+  const noPay = await riya.post('/api/bookings').send({ showId, seats: seatIds });
   assert.equal(noPay.status, 400);
 
-  const booked = await request(app).post('/api/bookings').set('Authorization', `Bearer ${token}`)
+  const booked = await riya.post('/api/bookings')
     .send({ showId, seats: seatIds, food: [{ id: 1, qty: 2 }], coupon: 'STUDENT20', paymentMethod: 'UPI' });
   assert.equal(booked.status, 201);
   assert.match(booked.body.booking.code, /^CV[A-Z0-9]{8}$/);
   assert.equal(booked.body.booking.total, q.total);
 
   // Kabir cannot grab those seats any more
-  const steal = await request(app).post(`/api/shows/${showId}/hold`)
-    .set('Authorization', `Bearer ${token2}`).send({ seats: seatIds });
+  const steal = await kabir.post(`/api/shows/${showId}/hold`).send({ seats: seatIds });
   assert.equal(steal.status, 409);
 
   // ...and cannot read Riya's booking
-  const peek = await request(app).get(`/api/bookings/${booked.body.booking.code}`).set('Authorization', `Bearer ${token2}`);
+  const peek = await kabir.get(`/api/bookings/${booked.body.booking.code}`);
   assert.equal(peek.status, 403);
 
-  const mine = await request(app).get('/api/bookings').set('Authorization', `Bearer ${token}`);
+  const mine = await riya.get('/api/bookings');
   assert.equal(mine.body.bookings.length, 1);
 });
 
 test('booking without a hold is rejected', async () => {
-  const res = await request(app).post('/api/bookings').set('Authorization', `Bearer ${token2}`)
-    .send({ showId, seats: ['A5'], paymentMethod: 'CARD' });
+  const res = await kabir.post('/api/bookings').send({ showId, seats: ['A5'], paymentMethod: 'CARD' });
   assert.equal(res.status, 409);
 });
 
 test('premium membership removes fees and gives 10% off', async () => {
-  const up = await request(app).post('/api/users/me/membership').set('Authorization', `Bearer ${token2}`);
+  const up = await kabir.post('/api/users/me/membership');
   assert.equal(up.body.user.plan, 'Premium');
-  const preview = await request(app).post('/api/bookings/preview').set('Authorization', `Bearer ${token2}`)
-    .send({ showId, seats: ['A7'] });
+  const preview = await kabir.post('/api/bookings/preview').send({ showId, seats: ['A7'] });
   const q = preview.body.quote;
   assert.equal(q.convenienceFee, 0);
   assert.equal(q.membershipDiscount, Math.round(q.ticketAmount * 0.1 * 100) / 100);
 });
 
 test('reviews update the movie rating', async () => {
-  const res = await request(app).post('/api/movies/1/reviews').set('Authorization', `Bearer ${token}`)
-    .send({ rating: 7, comment: 'Nice' });
+  const res = await riya.post('/api/movies/1/reviews').send({ rating: 7, comment: 'Nice' });
   assert.equal(res.status, 201);
   assert.equal(res.body.movie.votes, 2);
-  const again = await request(app).post('/api/movies/1/reviews').set('Authorization', `Bearer ${token}`)
-    .send({ rating: 11 });
+  const again = await riya.post('/api/movies/1/reviews').send({ rating: 11 });
   assert.equal(again.status, 400);
 });
 
 test('admin endpoints are protected', async () => {
-  const denied = await request(app).get('/api/admin/stats').set('Authorization', `Bearer ${token}`);
+  const denied = await riya.get('/api/admin/stats');
   assert.equal(denied.status, 403);
 
-  const login = await request(app).post('/api/auth/login').send({ email: 'admin@cineverse.com', password: 'admin123' });
-  const admin = login.body.token;
-  const stats = await request(app).get('/api/admin/stats').set('Authorization', `Bearer ${admin}`);
+  // The dev/demo admin login keeps working
+  const login = await admin.post('/api/auth/login').send({ email: 'admin@cineverse.com', password: 'admin123' });
+  assert.equal(login.status, 200);
+  const stats = await admin.get('/api/admin/stats');
   assert.equal(stats.status, 200);
   assert.equal(stats.body.totals.bookings, 1);
 
-  const movie = await request(app).post('/api/admin/movies').set('Authorization', `Bearer ${admin}`)
+  const movie = await admin.post('/api/admin/movies')
     .send({ title: 'Test Movie', genres: 'Drama, Comedy', languages: 'Hindi', duration_min: 100, status: 'coming_soon' });
   assert.equal(movie.status, 201);
   assert.deepEqual(movie.body.movie.genres, ['Drama', 'Comedy']);
@@ -196,7 +263,7 @@ test('live seat stream pushes an event when seats change', async () => {
     const decoder = new TextDecoder();
     let text = decoder.decode((await reader.read()).value); // "retry: ..." preamble
 
-    await request(app).post(`/api/shows/${showId}/hold`).set('Authorization', `Bearer ${token}`).send({ seats: ['B3'] });
+    await riya.post(`/api/shows/${showId}/hold`).send({ seats: ['B3'] });
     while (!text.includes('event: seats')) {
       const chunk = await reader.read();
       if (chunk.done) break;
@@ -229,4 +296,27 @@ test('featured film leads the catalogue and plays in every premium format', asyn
   const filtered = await request(app).get(`/api/movies/ramayana-rise-of-a-legend/shows?city=mumbai&format=${encodeURIComponent('IMAX 3D')}`);
   assert.ok(filtered.body.formats.includes('IMAX 3D'));
   assert.ok(filtered.body.theatres.every((t) => t.shows.every((s) => s.format === 'IMAX 3D')));
+});
+
+// Keep this last: it deliberately exhausts the per-user limits.
+test('seat holds and bookings are rate limited per user', async () => {
+  const saved = { ...config.rateLimits };
+  config.rateLimits.hold = 1;
+  config.rateLimits.booking = 1;
+  try {
+    const limitedHold = await riya.post(`/api/shows/${showId}/hold`).send({ seats: ['B3'] });
+    assert.equal(limitedHold.status, 429);
+    assert.match(limitedHold.body.error, /too quickly/);
+
+    const limitedBooking = await riya.post('/api/bookings').send({ showId, seats: ['B3'], paymentMethod: 'UPI' });
+    assert.equal(limitedBooking.status, 429);
+
+    // Limits are per account: the admin has not held or booked anything yet
+    const adminHold = await admin.post(`/api/shows/${showId}/hold`).send({ seats: ['B4'] });
+    assert.equal(adminHold.status, 200);
+    // Reading and previewing are not throttled
+    assert.equal((await riya.post('/api/bookings/preview').send({ showId, seats: ['B3'] })).status, 200);
+  } finally {
+    Object.assign(config.rateLimits, saved);
+  }
 });
