@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CinemaScene, webglAvailable } from '../three/CinemaScene.js';
-import { bestSeats, buildHall, upgradeOffer } from '../three/hallLayout.js';
+import { bestSeats, buildHall, timeOfDay, upgradeOffer } from '../three/hallLayout.js';
 import { fmtDate, fmtTime, inr } from '../utils.js';
 
 const PERKS = {
@@ -55,6 +55,7 @@ export default function SeatStage({
       scene = new CinemaScene(mountRef.current, {
         hall,
         movie: { title: show.movie.title, posterUrl: show.movie.poster_url },
+        time: timeOfDay(show.starts_at),
         formatPrice: inr,
         onSeatClick: (seat) => handlers.current.seat(seat),
         onBlockClick: (block) => scene.flyToBlock(block.id),
@@ -188,7 +189,7 @@ export default function SeatStage({
           <>
             <i>›</i>
             <button className={mode === 'block' ? 'here' : ''} onClick={() => sceneRef.current?.flyToBlock(block.id)}>
-              {block.category} · Block {block.code}
+              {block.category}{block.name ? ` · ${block.name}` : ''}
             </button>
           </>
         )}

@@ -3,10 +3,10 @@
 // No three.js in here on purpose, so it stays easy to reason about (and to unit test).
 
 export const TIERS = {
-  Classic: { kind: 'std', w: 0.62, depth: 1.05, rise: 0.34, color: '#ff5a4d' },
-  Premium: { kind: 'std', w: 0.62, depth: 1.05, rise: 0.34, color: '#c8102e' },
-  Recliner: { kind: 'recliner', w: 0.96, depth: 1.75, rise: 0.46, color: '#8f3fe0' },
-  Sofa: { kind: 'sofa', w: 1.32, depth: 1.85, rise: 0.5, color: '#f2b441' },
+  Classic: { kind: 'std', w: 0.62, depth: 1.05, rise: 0.34, color: '#d02c44' },
+  Premium: { kind: 'std', w: 0.62, depth: 1.05, rise: 0.34, color: '#3f73ff' },
+  Recliner: { kind: 'recliner', w: 0.96, depth: 1.75, rise: 0.46, color: '#9a5cff' },
+  Sofa: { kind: 'sofa', w: 1.32, depth: 1.85, rise: 0.5, color: '#f0b23c' },
 };
 const DEFAULT_TIER = TIERS.Premium;
 const SEAT_GAP = 0.07;
@@ -119,10 +119,7 @@ export function buildHall(layout, { format = '' } = {}) {
     y += tier.rise;
   }
 
-  // Stadium-style block numbers: 101, 102, 103 for the front tier, 201... for the next one back
-  const tierOrder = [...new Set(rows.map((r) => r.cat.name))];
   for (const b of blocks.values()) {
-    b.code = String((tierOrder.indexOf(b.category) + 1) * 100 + b.segment + 1);
     b.center = { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z: (b.min.z + b.max.z) / 2 };
     b.width = b.max.x - b.min.x;
     b.depth = b.max.z - b.min.z;
@@ -140,6 +137,16 @@ export function buildHall(layout, { format = '' } = {}) {
   };
   for (const s of seats) s.score = viewScore(hall, s);
   return hall;
+}
+
+/** Morning and afternoon shows are in daylight, early-evening ones at sunset, late ones at night. */
+export function timeOfDay(startsAt) {
+  const m = /T(\d{2}):(\d{2})/.exec(String(startsAt || ''));
+  if (!m) return 'day';
+  const hour = Number(m[1]) + Number(m[2]) / 60;
+  if (hour >= 6 && hour < 16.5) return 'day';
+  if (hour >= 16.5 && hour < 19) return 'dusk';
+  return 'night';
 }
 
 /** Where your eyes are when you sit in these seat(s). */

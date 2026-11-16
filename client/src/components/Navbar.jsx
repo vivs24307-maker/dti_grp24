@@ -11,6 +11,13 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuRef = useRef(null);
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'dark');
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('cineverse_theme', next); } catch { /* private mode: just don't remember it */ }
+    setTheme(next);
+  };
 
   useEffect(() => {
     const close = (e) => menuRef.current && !menuRef.current.contains(e.target) && setMenuOpen(false);
@@ -38,6 +45,10 @@ export default function Navbar() {
 
         <button className="city-btn" onClick={() => setPickerOpen(true)}>
           📍 {city?.name || 'Select city'} <span className="caret">▾</span>
+        </button>
+
+        <button className="theme-btn" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} title="Light / dark theme">
+          {theme === 'dark' ? '☀️' : '🌙'}
         </button>
 
         <button className="icon-btn hamburger" aria-label="Menu" onClick={() => setMobileOpen((o) => !o)}>☰</button>

@@ -10,13 +10,19 @@ import { eyePoint, tierOf } from './hallLayout.js';
  * Modes:  overview (whole hall from above) -> block (fly into a block, pick seats) -> pov (sit in the seat)
  */
 
-// Same colour language as a stadium map: red seats, blue = taken, orange = yours, white = the block you are in
 const COLORS = {
-  sold: new THREE.Color('#2f6fed'),
-  selected: new THREE.Color('#ff8a00'),
-  preview: new THREE.Color('#ffe14d'),
-  hover: new THREE.Color('#ff9a2e'),
+  sold: new THREE.Color('#3a3c4a'),
+  selected: new THREE.Color('#2ee27d'),
+  preview: new THREE.Color('#ffd166'),
   white: new THREE.Color('#ffffff'),
+};
+
+// The world outside follows the show time: a 9 PM show is booked under a night sky, a matinee in daylight.
+// sunPos is in units of the hall radius; `house` is the hall's own lighting, needed once the sun is gone.
+const SKY = {
+  day: { bg: '#a9c78c', sun: '#fff0d6', sunPower: 2.7, sunPos: [-1.5, 2.6, 1.3], sky: '#eef5ff', earth: '#55663f', ambient: 1.25, house: 0, lamps: false },
+  dusk: { bg: '#c9805f', sun: '#ff8a45', sunPower: 1.5, sunPos: [-2.6, 0.9, 1.4], sky: '#f2b79a', earth: '#3f3a4c', ambient: 0.6, house: 1.5, lamps: true },
+  night: { bg: '#070c1c', sun: '#8ea6ff', sunPower: 0.38, sunPos: [1.6, 2.4, -1.2], sky: '#27335f', earth: '#080a12', ambient: 0.42, house: 2.6, lamps: true },
 };
 
 /** Small seeded random generator so the park looks the same on every visit. */
@@ -105,9 +111,10 @@ function textTexture(text, { size = 64, color = '#ffffff', bg = null, font = '70
 }
 
 export class CinemaScene {
-  constructor(container, { hall, movie = {}, onSeatClick, onBlockClick, onModeChange, formatPrice = (n) => `₹${n}` }) {
+  constructor(container, { hall, movie = {}, time = 'day', onSeatClick, onBlockClick, onModeChange, formatPrice = (n) => `₹${n}` }) {
     this.container = container;
     this.hall = hall;
+    this.sky = SKY[time] || SKY.day;
     this.movie = movie;
     this.cb = { onSeatClick, onBlockClick, onModeChange };
     this.formatPrice = formatPrice;
@@ -147,7 +154,7 @@ export class CinemaScene {
     this.tooltipAnchor = null;
 
     this.scene = new THREE.Scene();
-    this.bgHouse = new THREE.Color('#a9c78c'); // daylight haze over the park
+    this.bgHouse = new THREE.Color(this.sky.bg); // the sky/haze for this time of day
     this.bgMovie = new THREE.Color('#030306');
     this.scene.background = this.bgHouse.clone();
     this.scene.fog = new THREE.Fog(this.scene.background, hall.radius * 5, hall.radius * 13);
@@ -185,10 +192,18 @@ export class CinemaScene {
   buildLights() {
     const { hall } = this;
     const R = hall.radius;
-    this.hemi = new THREE.HemisphereLight('#eef5ff', '#55663f', 1.4);
-    // Afternoon sun from behind-left: lights the seat backs and throws the wall's shadow across the stalls
-    this.sun = new THREE.DirectionalLight('#fff0d6', 1.6);
-    this.sun.position.set(-R * 1.5, R * 2.6, hall.zBack / 2 + R * 1.3);
+    const sky = this.sky;
+    this.hemi = new THREE.HemisphereLight(sky.sky, sky.earth, 1.4);
+    // Sun (or moon at night): lights the seat backs and throws the wall's shadow across the stalls
+    this.sun = new THREE.DirectionalLight(sky.sun, 1.6);
+    this.sun.position.set(R * sky.sunPos[0], R * sky.sunPos[1], hall.zBack / 2 + R * sky.sunPos[2]);
+    // The hall's own lights, pouring down through the open roof once it is dark outside
+    const lampHeight = hall.wallH + 26;
+    const spread = Math.atan((Math.max(hall.halfW, hall.zBack / 2) + 1) / lampHeight); // just the hall, not the park
+    this.house = new THREE.SpotLight('#ffe6c4', 0, 0, spread, 0.35, 0);
+    this.house.position.set(0, lampHeight, hall.zBack / 2);
+    this.house.target.position.set(0, 0, hall.zBack / 2);
+    this.scene.add(this.house, this.house.target);
     this.sun.target.position.set(0, 0, hall.zBack / 2);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -329,6 +344,38 @@ export class CinemaScene {
       trunk.setMatrixAt(placed, m);
       placed++;
     }
+    // Lamp posts round the ring walk and plaza, lit from sunset onwards
+    if (this.sky.lamps) {
+      const spots = [];
+      for (let i = 0; i < 22; i++) {
+        const a = (i / 22) * Math.PI * 2;
+        spots.push([Math.cos(a) * (ringR + 1.1), cz + Math.sin(a) * (ringR + 1.1)]);
+      }
+      for (const sx of [-1, 1]) for (let i = 0; i <= 4; i++) spots.push([sx * (plazaW / 2 - 0.8), plazaZ - plazaD / 2 + 1 + (i * (plazaD - 2)) / 4]);
+      const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.24, 10, 8), new THREE.MeshBasicMaterial({ color: '#ffd9a0', toneMapped: false, fog: false }), spots.length);
+      const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.07, 3.4, 6), new THREE.MeshStandardMaterial({ color: '#2a2c33', roughness: 0.6 }), spots.length);
+      const gc = document.createElement('canvas');
+      gc.width = gc.height = 128;
+      const gx = gc.getContext('2d');
+      const gg = gx.createRadialGradient(64, 64, 2, 64, 64, 64);
+      gg.addColorStop(0, 'rgba(255, 200, 130, 0.42)');
+      gg.addColorStop(1, 'rgba(255, 214, 150, 0)');
+      gx.fillStyle = gg;
+      gx.fillRect(0, 0, 128, 128);
+      const pools = new THREE.InstancedMesh(
+        new THREE.PlaneGeometry(7, 7).rotateX(-Math.PI / 2),
+        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(gc), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
+        spots.length,
+      );
+      spots.forEach(([x, z], i) => {
+        m.makeTranslation(x, ground + 3.5, z); bulbs.setMatrixAt(i, m);
+        m.makeTranslation(x, ground + 1.7, z); poles.setMatrixAt(i, m);
+        m.makeTranslation(x, ground + 0.09, z); pools.setMatrixAt(i, m);
+      });
+      this.lampPools = pools;
+      g.add(bulbs, poles, pools);
+    }
+
     canopy.count = placed;
     trunk.count = placed;
     canopy.castShadow = true;
@@ -627,7 +674,7 @@ export class CinemaScene {
     this.blockMeshes = [];
     for (const b of this.hall.blocks.values()) {
       const geo = new THREE.BoxGeometry(b.width + 0.35, b.height + 0.25, b.depth + 0.2);
-      const color = COLORS.hover.clone();
+      const color = new THREE.Color(b.color);
       const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
         color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
       }));
@@ -726,11 +773,9 @@ export class CinemaScene {
       else if (this.preview.includes(s.id)) c.copy(COLORS.preview);
       else {
         c.copy(s.base);
-        if (focus && s.blockId === focus) {
-          // hovered stand glows orange from the air; once you are in it, its free seats turn white
-          if (this.mode === 'overview') c.lerp(COLORS.hover, 0.85); else c.lerp(COLORS.white, 0.82);
-        }
-        if (this.hoverSeat === s.id) c.lerp(COLORS.hover, 0.7);
+        if (focus && s.blockId === focus) c.lerp(COLORS.white, this.mode === 'overview' ? 0.4 : 0.22);
+        else if (this.mode === 'block' && focus) c.multiplyScalar(0.6);
+        if (this.hoverSeat === s.id) c.lerp(COLORS.white, 0.65);
       }
       s.mesh.setColorAt(s.index, c);
     }
@@ -875,11 +920,13 @@ export class CinemaScene {
   }
 
   applyLights(level) {
-    this.hemi.intensity = 0.34 + 1.25 * level;
-    this.sun.intensity = 0.04 + 2.7 * level;
+    this.hemi.intensity = 0.34 + this.sky.ambient * level;
+    this.sun.intensity = 0.04 + this.sky.sunPower * level;
+    this.house.intensity = this.sky.house * level;
     this.fill.intensity = 0.1 + 0.35 * level;
     this.screenLight.intensity = 30 + 520 * (1 - level);
     this.beam.material.opacity = 0.085 * (1 - level);
+    if (this.lampPools) this.lampPools.material.opacity = 0.35 + 0.65 * level;
     for (const p of this.sidePanels || []) p.material.opacity = this.hall.features.screenX ? 0.2 + 0.75 * (1 - level) : 0.08 + 0.5 * (1 - level);
     this.scene.background.lerpColors(this.bgMovie, this.bgHouse, level);
     this.scene.fog.color.copy(this.scene.background);
@@ -1012,8 +1059,8 @@ export class CinemaScene {
   showBlockTooltip(b) {
     const left = b.seats.filter((s) => !this.unavailable.has(s.id)).length;
     this.setTooltip({
-      kicker: `${b.category}${b.name ? ` · ${b.name}` : ''}`.toUpperCase(),
-      title: `Block ${b.code}`,
+      kicker: b.category.toUpperCase(),
+      title: b.name ? `${b.name} block` : `${b.category} block`,
       sub: left ? `● ${left} left` : 'Sold out',
       subClass: left ? (left < b.seats.length * 0.3 ? 'few' : 'ok') : 'none',
       price: this.formatPrice(b.price),

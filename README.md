@@ -14,8 +14,9 @@ a payments flow, QR tickets and an admin dashboard.
 Choosing seats happens inside a real-time 3D cinema hall (three.js / WebGL — nothing to install, it runs in the browser):
 
 1. **Whole venue from above** – you arrive over the cinema in its park (lawn, paths, trees, sun shadows) with the
-   roof off, looking straight into the hall. Every block lights up orange with its **number, price and seats left**
-   as you move the mouse. Drag to orbit, scroll to zoom.
+   roof off, looking straight into the hall. Every block lights up with its **price and seats left**
+   as you move the mouse. Drag to orbit, scroll to zoom. The sky follows the show time: daylight for
+   matinees, sunset for early-evening shows, and a moonlit park with lamp posts for night shows.
 2. **Fly into a block** – one click and the camera glides down into that block. Pick seats one by one;
    each seat shows its row, number, price and a **view score** (how centred / how far / how much you look up).
 3. **The ticket shows your exact view** – the moment you pick a seat, a ticket appears with a picture rendered
@@ -25,11 +26,10 @@ Choosing seats happens inside a real-time 3D cinema hall (three.js / WebGL — n
 5. **Flip to upgrade** – hit *Upgrade* and the ticket flips over to its gold side, the camera flies to the
    recliners / sofas, and you see the VIP view and the price difference before deciding.
 6. **Best seats** – choose how many people, press ✨ and it finds the best neighbouring seats in the house.
-7. **Live** – seats taken by other people turn blue (and get a silhouette) in real time via Server-Sent Events.
+7. **Live** – seats taken by other people turn grey (and get a silhouette) in real time via Server-Sent Events.
 8. **Format effects** – IMAX halls get a taller screen, ScreenX wraps the picture onto the side walls, ICE lights
    the walls with LED panels, 4DX rocks your seat in first-person view, and 3D shows the red/cyan fringe on screen.
 
-Colours follow stadium maps: red seats, **blue = taken**, **orange = yours**, white = the block you are in.
 
 Taken seats are filled with an audience, the lights can be toggled, and on slow devices the render resolution
 drops automatically. No WebGL? The app falls back to the classic 2D map (also reachable from the **2D** button).
@@ -76,6 +76,7 @@ one self-contained file (no server) that you can double-click, email or host any
 - **My bookings** – upcoming & past bookings, **cancellation with refund** (up to 2 hours before the show, 20% fee).
 - **CineVerse Premium** membership – 10% off tickets, zero convenience fee, free popcorn (₹299 / 30 days, simulated payment).
 - **Accounts** – sign up, log in (JWT), edit profile, change password.
+- **Light and dark theme** – sun/moon button in the navbar; the choice is remembered on that device.
 
 ### For admins (`/admin`)
 - Dashboard with revenue, bookings, tickets sold, users, cancellations, revenue by movie / city, bookings per day.
