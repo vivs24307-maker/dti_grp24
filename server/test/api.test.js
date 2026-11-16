@@ -209,3 +209,24 @@ test('live seat stream pushes an event when seats change', async () => {
     server.close();
   }
 });
+
+test('featured film leads the catalogue and plays in every premium format', async () => {
+  const list = await request(app).get('/api/movies?city=mumbai');
+  assert.equal(list.body.movies[0].title, 'Ramayana: Rise of a Legend');
+  assert.equal(list.body.movies[0].featured, true);
+
+  const detail = await request(app).get('/api/movies/ramayana-rise-of-a-legend?city=mumbai');
+  const formats = detail.body.movie.formats.map((f) => f.name);
+  for (const f of ['IMAX 3D', '4DX 3D', 'ScreenX', 'P[XL]', 'ICE', 'Dolby Cinema']) {
+    assert.ok(formats.some((x) => x.startsWith(f.split(' ')[0])), `expected a ${f} show, got ${formats.join(', ')}`);
+  }
+  assert.ok(formats.includes('IMAX 3D'));
+
+  const next = await request(app).get('/api/movies/ramayana-rise-of-a-legend/next-show?city=mumbai');
+  assert.equal(next.status, 200);
+  assert.match(next.body.show.format, /IMAX/);
+
+  const filtered = await request(app).get(`/api/movies/ramayana-rise-of-a-legend/shows?city=mumbai&format=${encodeURIComponent('IMAX 3D')}`);
+  assert.ok(filtered.body.formats.includes('IMAX 3D'));
+  assert.ok(filtered.body.theatres.every((t) => t.shows.every((s) => s.format === 'IMAX 3D')));
+});

@@ -45,6 +45,22 @@ export const timeOfDay = (s) => {
 
 export const certClass = (c) => ({ U: 'cert-u', UA: 'cert-ua', A: 'cert-a' }[c] || 'cert-ua');
 
+/** A tidy title card for films whose poster is missing or fails to load. */
+export function titleCard(title = '') {
+  const safe = String(title).replace(/[<>&"]/g, '').slice(0, 60);
+  const words = safe.split(' ');
+  const lines = [];
+  for (const w of words) {
+    if (lines.length && (lines[lines.length - 1] + ' ' + w).length <= 13) lines[lines.length - 1] += ` ${w}`;
+    else lines.push(w);
+  }
+  const hue = [...safe].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7);
+  const text = lines.slice(0, 5).map((l, i) => `<text x="100" y="${150 - lines.length * 12 + i * 26}" font-size="20" font-weight="800" fill="#fff" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">${l}</text>`).join('');
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue} 55% 26%)"/><stop offset="1" stop-color="hsl(${(hue + 50) % 360} 60% 12%)"/></linearGradient></defs><rect width="200" height="300" fill="url(#g)"/>${text}<text x="100" y="272" font-size="9" fill="#ffffff99" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" letter-spacing="3">CINEVERSE</text></svg>`,
+  );
+}
+
 export const PLACEHOLDER_POSTER =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect width="200" height="300" fill="#1c1c25"/><text x="100" y="160" font-size="48" text-anchor="middle">🎬</text></svg>');

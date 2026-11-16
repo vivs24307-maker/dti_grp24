@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useCity } from '../context/CityContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { Cert, Empty, ErrorBox, Loader, Poster, RatingBadge, useAsync } from '../components/ui.jsx';
 import { fmtDate, fmtDuration } from '../utils.js';
@@ -47,7 +48,8 @@ function ReviewForm({ movieId, mine, onSaved }) {
 export default function MovieDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const movieQ = useAsync(() => api.get(`/movies/${id}`), [id]);
+  const { citySlug } = useCity();
+  const movieQ = useAsync(() => api.get(`/movies/${id}?city=${citySlug}`), [id, citySlug]);
   const reviewsQ = useAsync(() => api.get(`/movies/${id}/reviews`), [id, user?.id]);
 
   if (movieQ.loading) return <Loader />;
@@ -62,6 +64,7 @@ export default function MovieDetail() {
           <div className="movie-banner-poster"><Poster src={m.poster_url} alt={m.title} /></div>
           <div className="movie-banner-info">
             <h1>{m.title}</h1>
+            {m.tagline && <p className="hero-tagline">{m.tagline}</p>}
             <div className="rating-box">
               <RatingBadge rating={m.rating} votes={m.votes} />
               {user && <a href="#reviews" className="btn btn-ghost btn-sm">Rate now</a>}
@@ -69,6 +72,14 @@ export default function MovieDetail() {
             <div className="chips">
               {m.languages.map((l) => <span key={l} className="chip static">{l}</span>)}
             </div>
+            {m.formats?.length > 0 && (
+              <div className="format-row">
+                <small className="muted">Playing in</small>
+                {m.formats.map((f) => (
+                  <Link key={f.name} to={`/movies/${m.slug}/tickets?format=${encodeURIComponent(f.name)}`} className="format-chip" title={f.about}>{f.name}</Link>
+                ))}
+              </div>
+            )}
             <p className="meta-row">
               <span>{fmtDuration(m.duration_min)}</span>·<span>{m.genres.join(', ')}</span>·<Cert value={m.certificate} />
               {m.release_date && <>·<span>{fmtDate(m.release_date, { day: 'numeric', month: 'short', year: 'numeric' })}</span></>}

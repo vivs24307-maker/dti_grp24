@@ -13,8 +13,9 @@ a payments flow, QR tickets and an admin dashboard.
 
 Choosing seats happens inside a real-time 3D cinema hall (three.js / WebGL — nothing to install, it runs in the browser):
 
-1. **Whole hall from above** – you land on a cut-away auditorium: screen, stepped rows, aisles with LED step lights.
-   Every block lights up with its **price and seats left** as you move the mouse. Drag to orbit, scroll to zoom.
+1. **Whole venue from above** – you arrive over the cinema in its park (lawn, paths, trees, sun shadows) with the
+   roof off, looking straight into the hall. Every block lights up orange with its **number, price and seats left**
+   as you move the mouse. Drag to orbit, scroll to zoom.
 2. **Fly into a block** – one click and the camera glides down into that block. Pick seats one by one;
    each seat shows its row, number, price and a **view score** (how centred / how far / how much you look up).
 3. **The ticket shows your exact view** – the moment you pick a seat, a ticket appears with a picture rendered
@@ -24,7 +25,11 @@ Choosing seats happens inside a real-time 3D cinema hall (three.js / WebGL — n
 5. **Flip to upgrade** – hit *Upgrade* and the ticket flips over to its gold side, the camera flies to the
    recliners / sofas, and you see the VIP view and the price difference before deciding.
 6. **Best seats** – choose how many people, press ✨ and it finds the best neighbouring seats in the house.
-7. **Live** – seats taken by other people turn grey (and get a silhouette) in real time via Server-Sent Events.
+7. **Live** – seats taken by other people turn blue (and get a silhouette) in real time via Server-Sent Events.
+8. **Format effects** – IMAX halls get a taller screen, ScreenX wraps the picture onto the side walls, ICE lights
+   the walls with LED panels, 4DX rocks your seat in first-person view, and 3D shows the red/cyan fringe on screen.
+
+Colours follow stadium maps: red seats, **blue = taken**, **orange = yours**, white = the block you are in.
 
 Taken seats are filled with an audience, the lights can be toggled, and on slow devices the render resolution
 drops automatically. No WebGL? The app falls back to the classic 2D map (also reachable from the **2D** button).
@@ -35,6 +40,21 @@ snapshots); `client/src/components/SeatStage.jsx` is the React UI around it.
 
 **Standalone demo:** `npm run build:demo --prefix client` produces `client/dist-demo/cineverse-3d-demo.html` —
 one self-contained file (no server) that you can double-click, email or host anywhere.
+
+---
+
+## 🎞️ Formats and the headline film
+
+- Screens come in seven technologies: **Standard (2D / 3D), IMAX (2D / 3D), P[XL], 4DX, ScreenX, ICE and Dolby Cinema**,
+  each also in a 3D flavour (IMAX 3D, 4DX 3D, ScreenX 3D…). Formats show on every showtime, can be filtered,
+  and change the price. Definitions live in `server/src/lib/formats.js`.
+- One film can be the **headline** (currently *Ramayana: Rise of a Legend*): it leads the home page, gets every other
+  show on premium screens, and has a **Pick seats in 3D** button that jumps straight into its next IMAX show.
+- **Poster:** Ramayana ships with an original title card (`client/public/posters/ramayana.svg`), not the official
+  poster. To use the real one, replace that file, or open **Admin → Movies**, click the poster and paste an image link.
+  Its running time (195 min) is a reported figure — edit it in `server/src/seedData.js` if it differs.
+- Existing databases are upgraded in place on start-up (new films, new screens, re-planned future shows);
+  users, bookings and reviews are kept.
 
 ---
 
@@ -60,7 +80,7 @@ one self-contained file (no server) that you can double-click, email or host any
 ### For admins (`/admin`)
 - Dashboard with revenue, bookings, tickets sold, users, cancellations, revenue by movie / city, bookings per day.
 - All bookings table.
-- Add movies, change their status (now showing / coming soon / archived).
+- Add movies, change their status, poster, headline flag and 3D flag.
 - Schedule shows on any screen (with overlap detection).
 - Create and enable/disable coupon codes.
 

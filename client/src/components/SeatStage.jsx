@@ -23,9 +23,9 @@ export default function SeatStage({
   const sceneRef = useRef(null);
   // Key on the layout's contents: live refreshes hand us a new (but identical) object every time,
   // and rebuilding the hall would throw away the whole 3D scene.
-  const layoutKey = JSON.stringify(show.layout);
+  const layoutKey = `${show.format}|${JSON.stringify(show.layout)}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const hall = useMemo(() => buildHall(show.layout), [layoutKey]);
+  const hall = useMemo(() => buildHall(show.layout, { format: show.format }), [layoutKey]);
   const taken = useMemo(() => new Set(unavailable), [unavailable]);
 
   const [mode, setMode] = useState('overview');
@@ -127,11 +127,12 @@ export default function SeatStage({
     notify(`Best ${party} seat${party > 1 ? 's' : ''} found: ${ids.join(', ')}`, 'success');
   };
 
+  // Upgrade: the ticket flips over and you are taken straight into the better seats
   const openUpgrade = () => {
     if (!offer) return;
     const scene = sceneRef.current;
     scene.setPreview(offer.seats);
-    flyToSelection(offer.seats);
+    scene.flyToSeats(offer.seats);
     setVip({ ...offer, shot: scene.snapshot(offer.seats) });
     setSheetOpen(true);
   };
@@ -140,6 +141,7 @@ export default function SeatStage({
     scene.setPreview([]);
     if (accept) {
       setSelected(vip.seats);
+      flyToSelection(vip.seats);
       notify(`Upgraded to ${vip.category} ✨`, 'success');
     } else {
       flyToSelection(selected);
@@ -150,7 +152,11 @@ export default function SeatStage({
   const hint = disabled ? 'Bookings are closed for this show — you can still look around'
     : mode === 'overview' ? 'Hover a block to see its price · click to fly in · drag to orbit'
       : mode === 'block' ? (selected.length ? 'Tap more seats, or sit down to check the view' : 'Pick your seats · scroll to zoom · drag to look around')
-        : 'This is exactly what you will see. Move the mouse to look around.';
+        : vip ? `This is the ${vip.category} view. Take it, or keep your seats.`
+          : hall.features.fourDX ? '4DX: your seat moves with the film. Move the mouse to look around.'
+            : hall.features.screenX ? 'ScreenX: the picture wraps onto the side walls. Look left and right.'
+              : hall.features.threeD ? 'Shown in 3D — glasses are handed out at the door. Move the mouse to look around.'
+                : 'This is exactly what you will see. Move the mouse to look around.';
 
   return (
     <div className={`stage mode-${mode} ${lightsOff ? 'lights-off' : ''}`}>
@@ -159,8 +165,8 @@ export default function SeatStage({
       <header className="stage-top">
         <button className="stage-btn round" onClick={onExit} aria-label="Back">‹</button>
         <div className="stage-title">
-          <h1>{show.movie.title}</h1>
-          <p>{show.theatre_name} · {fmtDate(show.starts_at)}, {fmtTime(show.starts_at)} · {show.screen_name}{show.format !== show.screen_name ? ` · ${show.format}` : ''}</p>
+          <h1>{show.movie.title} {show.format && <span className="stage-format">{show.format}</span>}</h1>
+          <p>{show.theatre_name} · {fmtDate(show.starts_at)}, {fmtTime(show.starts_at)} · {show.screen_name} · {show.language}</p>
         </div>
         <div className="stage-tools">
           <div className="stage-party" title="How many seats?">
@@ -182,7 +188,7 @@ export default function SeatStage({
           <>
             <i>›</i>
             <button className={mode === 'block' ? 'here' : ''} onClick={() => sceneRef.current?.flyToBlock(block.id)}>
-              {block.category}{block.name ? ` · ${block.name}` : ''}
+              {block.category} · Block {block.code}
             </button>
           </>
         )}
@@ -206,9 +212,9 @@ export default function SeatStage({
 
       {mode === 'pov' && (
         <div className="stage-pov">
-          <span className="pill pill-gold">★ View score {avgScore}/10</span>
-          <strong>{selected.length > 1 ? `Seats ${selected.join(', ')}` : `Row ${seatsInfo[0]?.row} · Seat ${seatsInfo[0]?.col}`}</strong>
-          <button className="stage-btn" onClick={() => flyToSelection(selected)}>← Back to seats</button>
+          {vip ? <span className="pill pill-gold">★ {vip.category} view</span> : <span className="pill pill-gold">★ View score {avgScore}/10</span>}
+          <strong>{vip ? `Seats ${vip.seats.join(', ')}` : selected.length > 1 ? `Seats ${selected.join(', ')}` : `Row ${seatsInfo[0]?.row} · Seat ${seatsInfo[0]?.col}`}</strong>
+          {!vip && <button className="stage-btn" onClick={() => flyToSelection(selected)}>← Back to seats</button>}
         </div>
       )}
 

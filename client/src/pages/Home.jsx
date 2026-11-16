@@ -1,18 +1,30 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, qs } from '../api.js';
 import { useCity } from '../context/CityContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 import { Cert, ErrorBox, Loader, MovieCard, Poster, RatingBadge, useAsync } from '../components/ui.jsx';
 import { fmtDuration } from '../utils.js';
 
 const GENRE_EMOJI = { Action: '💥', Comedy: '😂', Drama: '🎭', Horror: '👻', 'Sci-Fi': '🚀', Biopic: '📜', Thriller: '🔪', Animation: '🎨', Romance: '💕', Musical: '🎵', Family: '👨‍👩‍👧' };
 
-function Hero({ movies }) {
+function Hero({ movies, citySlug }) {
   const [i, setI] = useState(0);
+  const navigate = useNavigate();
+  const toast = useToast();
+  // Skip the lists: open the 3D hall for the next (biggest-format) show of this film
+  const jumpIn = async (movie) => {
+    try {
+      const { show } = await api.get(`/movies/${movie.id}/next-show${qs({ city: citySlug })}`);
+      navigate(`/shows/${show.id}/seats`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
   useEffect(() => {
     if (movies.length < 2) return;
-    const t = setInterval(() => setI((x) => (x + 1) % movies.length), 6000);
+    const t = setInterval(() => setI((x) => (x + 1) % movies.length), 9000);
     return () => clearInterval(t);
   }, [movies.length]);
   const m = movies[i];
@@ -23,17 +35,20 @@ function Hero({ movies }) {
       <div className="container hero-inner">
         <div className="hero-poster"><Poster src={m.poster_url} alt={m.title} /></div>
         <div className="hero-copy">
-          <span className="pill">🔥 Trending in your city</span>
+          <span className={`pill ${m.featured ? 'pill-gold' : ''}`}>{m.featured ? '★ The big one · now in cinemas' : '🔥 Trending in your city'}</span>
           <h1>{m.title}</h1>
+          {m.tagline && <p className="hero-tagline">{m.tagline}</p>}
           <div className="meta-row">
             <RatingBadge rating={m.rating} votes={m.votes} />
             <Cert value={m.certificate} />
             <span>{fmtDuration(m.duration_min)}</span>
             <span>{m.genres.join(', ')}</span>
+            {m.has_3d && <span className="chip static">3D</span>}
           </div>
           <p className="hero-desc">{m.description}</p>
           <div className="hero-actions">
-            <Link to={`/movies/${m.slug}/tickets`} className="btn btn-primary btn-lg">Book tickets</Link>
+            <button className="btn btn-primary btn-lg" onClick={() => jumpIn(m)}>🧊 Pick seats in 3D</button>
+            <Link to={`/movies/${m.slug}/tickets`} className="btn btn-ghost btn-lg">All showtimes</Link>
             <Link to={`/movies/${m.slug}`} className="btn btn-ghost btn-lg">More info</Link>
           </div>
           <div className="hero-dots">
@@ -66,7 +81,7 @@ export default function Home() {
 
   return (
     <>
-      <Hero movies={movies.slice(0, 5)} />
+      <Hero movies={movies.slice(0, 5)} citySlug={citySlug} />
 
       <section className="container section">
         <div className="section-head">

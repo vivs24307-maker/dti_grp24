@@ -7,6 +7,7 @@ import { MOVIE_SELECT, formatBooking, formatMovie } from '../lib/format.js';
 import { slugify } from '../seed.js';
 import { cleanString, requireFields, toInt } from '../lib/validate.js';
 import { parseLocal } from '../lib/time.js';
+import { formatLabel, techFactor } from '../lib/formats.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -68,6 +69,9 @@ function movieParams(body) {
     backdrop_url: cleanString(body.backdrop_url || body.poster_url, 500),
     trailer_url: cleanString(body.trailer_url, 500),
     status: ['now_showing', 'coming_soon', 'archived'].includes(body.status) ? body.status : 'now_showing',
+    tagline: cleanString(body.tagline, 160),
+    featured: body.featured === true || body.featured === 1 || body.featured === 'true' ? 1 : 0,
+    has_3d: body.has_3d === true || body.has_3d === 1 || body.has_3d === 'true' ? 1 : 0,
   };
 }
 
@@ -82,9 +86,9 @@ router.post('/movies', (req, res) => {
   if (db.prepare('SELECT 1 FROM movies WHERE slug = ?').get(p.slug)) throw conflict('A movie with this title already exists');
   const info = db.prepare(`
     INSERT INTO movies (title, slug, genres, languages, duration_min, certificate, release_date, description, director,
-                        cast_list, poster_url, backdrop_url, trailer_url, status)
+                        cast_list, poster_url, backdrop_url, trailer_url, status, tagline, featured, has_3d)
     VALUES (@title, @slug, @genres, @languages, @duration_min, @certificate, @release_date, @description, @director,
-            @cast_list, @poster_url, @backdrop_url, @trailer_url, @status)`).run(p);
+            @cast_list, @poster_url, @backdrop_url, @trailer_url, @status, @tagline, @featured, @has_3d)`).run(p);
   res.status(201).json({ movie: formatMovie(db.prepare(`${MOVIE_SELECT} WHERE m.id = ?`).get(info.lastInsertRowid)) });
 });
 
@@ -99,11 +103,14 @@ router.put('/movies/:id', (req, res) => {
     cast: JSON.parse(existing.cast_list),
     ...req.body,
   };
+  // A new poster replaces the backdrop too, unless one was given explicitly
+  if (req.body.poster_url !== undefined && req.body.backdrop_url === undefined) merged.backdrop_url = req.body.poster_url;
   const p = movieParams(merged);
   db.prepare(`
     UPDATE movies SET title=@title, genres=@genres, languages=@languages, duration_min=@duration_min,
       certificate=@certificate, release_date=@release_date, description=@description, director=@director,
-      cast_list=@cast_list, poster_url=@poster_url, backdrop_url=@backdrop_url, trailer_url=@trailer_url, status=@status
+      cast_list=@cast_list, poster_url=@poster_url, backdrop_url=@backdrop_url, trailer_url=@trailer_url, status=@status,
+      tagline=@tagline, featured=@featured, has_3d=@has_3d
     WHERE id=@id`).run({ ...p, id });
   res.json({ movie: formatMovie(db.prepare(`${MOVIE_SELECT} WHERE m.id = ?`).get(id)) });
 });
@@ -143,10 +150,12 @@ router.post('/shows', (req, res) => {
   });
   if (clash) throw conflict(`This screen is busy then (show at ${clash.starts_at.replace('T', ' ')})`);
 
-  const factor = Number(req.body.priceFactor) > 0 ? Number(req.body.priceFactor) : 1;
+  const is3d = req.body.is3d === true || req.body.is3d === 'true';
+  const base = Number(req.body.priceFactor) > 0 ? Number(req.body.priceFactor) : 1;
+  const factor = Number((base * techFactor(screen.format, is3d)).toFixed(2));
   const info = db.prepare(`INSERT INTO shows (movie_id, screen_id, starts_at, language, format, price_factor)
                            VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(movie.id, screen.id, startsAt, cleanString(req.body.language, 30), screen.format, factor);
+    .run(movie.id, screen.id, startsAt, cleanString(req.body.language, 30), formatLabel(screen.format, is3d), factor);
   res.status(201).json({ show: db.prepare('SELECT * FROM shows WHERE id = ?').get(info.lastInsertRowid) });
 });
 

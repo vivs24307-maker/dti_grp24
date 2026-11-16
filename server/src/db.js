@@ -57,7 +57,15 @@ CREATE TABLE IF NOT EXISTS movies (
   backdrop_url TEXT,
   trailer_url  TEXT,
   status       TEXT NOT NULL DEFAULT 'now_showing' CHECK (status IN ('now_showing','coming_soon','archived')),
+  tagline      TEXT,
+  featured     INTEGER NOT NULL DEFAULT 0,   -- the headline film: first on the home page, most shows
+  has_3d       INTEGER NOT NULL DEFAULT 0,   -- also released in 3D
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT
 );
 
 CREATE TABLE IF NOT EXISTS shows (
@@ -139,12 +147,30 @@ CREATE TABLE IF NOT EXISTS food_items (
 );
 `;
 
+/** Databases created by an earlier version get the newer columns added in place. */
+function migrate(db) {
+  const columns = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  const movieCols = columns('movies');
+  if (!movieCols.includes('tagline')) db.exec('ALTER TABLE movies ADD COLUMN tagline TEXT');
+  if (!movieCols.includes('featured')) db.exec('ALTER TABLE movies ADD COLUMN featured INTEGER NOT NULL DEFAULT 0');
+  if (!movieCols.includes('has_3d')) db.exec('ALTER TABLE movies ADD COLUMN has_3d INTEGER NOT NULL DEFAULT 0');
+}
+
+export function getMeta(db, key) {
+  return db.prepare('SELECT value FROM meta WHERE key = ?').get(key)?.value ?? null;
+}
+
+export function setMeta(db, key, value) {
+  db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(key, String(value));
+}
+
 export function openDb(file = config.dbFile) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 

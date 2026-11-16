@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import SeatStage from '../components/SeatStage.jsx';
 import { ToastProvider, useToast } from '../context/ToastContext.jsx';
 import { inr } from '../utils.js';
+import posterSvg from '../../public/posters/ramayana.svg?raw';
 import '../styles.css';
 import './demo.css';
 
@@ -30,11 +31,15 @@ function tomorrowEvening() {
 }
 
 const SHOW = {
-  movie: { title: 'The Last Signal', poster_url: null, certificate: 'UA' },
+  movie: {
+    title: 'Ramayana: Rise of a Legend',
+    poster_url: `data:image/svg+xml;utf8,${encodeURIComponent(posterSvg)}`,
+    certificate: 'UA',
+  },
   theatre_name: 'CineVerse Demo Hall',
-  screen_name: 'Screen 1',
-  format: 'Dolby Atmos',
-  language: 'English',
+  screen_name: 'IMAX',
+  format: 'IMAX 3D',
+  language: 'Hindi',
   starts_at: tomorrowEvening(),
   layout: LAYOUT,
 };

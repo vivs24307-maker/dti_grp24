@@ -7,6 +7,8 @@ export function formatMovie(row) {
   return {
     ...rest,
     cast: cast_list,
+    featured: Boolean(row.featured),
+    has_3d: Boolean(row.has_3d),
     rating: row.rating != null ? Number(Number(row.rating).toFixed(1)) : null,
     votes: row.votes ?? 0,
   };

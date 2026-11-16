@@ -10,12 +10,25 @@ import { eyePoint, tierOf } from './hallLayout.js';
  * Modes:  overview (whole hall from above) -> block (fly into a block, pick seats) -> pov (sit in the seat)
  */
 
+// Same colour language as a stadium map: red seats, blue = taken, orange = yours, white = the block you are in
 const COLORS = {
-  sold: new THREE.Color('#3a3c4a'),
-  selected: new THREE.Color('#2ee27d'),
-  preview: new THREE.Color('#ffd166'),
+  sold: new THREE.Color('#2f6fed'),
+  selected: new THREE.Color('#ff8a00'),
+  preview: new THREE.Color('#ffe14d'),
+  hover: new THREE.Color('#ff9a2e'),
   white: new THREE.Color('#ffffff'),
 };
+
+/** Small seeded random generator so the park looks the same on every visit. */
+function seeded(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 const PEOPLE = ['#2a2d3a', '#3b2f3a', '#243442', '#40372c', '#2f3a31', '#3a2a2a'].map((c) => new THREE.Color(c));
 const MAX_MARKERS = 12;
 const BASE_FOV = 45;
@@ -121,7 +134,9 @@ export class CinemaScene {
     this.renderer.setPixelRatio(this.pixelRatio);
     this.perf = { frames: 0, time: 0 };
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.3;
+    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.canvas = this.renderer.domElement;
     this.canvas.className = 'stage-canvas';
     container.appendChild(this.canvas);
@@ -132,10 +147,10 @@ export class CinemaScene {
     this.tooltipAnchor = null;
 
     this.scene = new THREE.Scene();
-    this.bgHouse = new THREE.Color('#0c0c16');
+    this.bgHouse = new THREE.Color('#a9c78c'); // daylight haze over the park
     this.bgMovie = new THREE.Color('#030306');
     this.scene.background = this.bgHouse.clone();
-    this.scene.fog = new THREE.Fog(this.scene.background, hall.radius * 2.2, hall.radius * 6);
+    this.scene.fog = new THREE.Fog(this.scene.background, hall.radius * 5, hall.radius * 13);
 
     this.camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 400);
     this.snapCamera = new THREE.PerspectiveCamera(POV_FOV, 16 / 9, 0.1, 400);
@@ -144,6 +159,7 @@ export class CinemaScene {
     this.clock = new THREE.Clock();
 
     this.buildLights();
+    this.buildExterior();
     this.buildHallShell();
     this.buildScreen();
     this.buildSeats();
@@ -154,9 +170,9 @@ export class CinemaScene {
     this.resize();
     const start = this.goalPose();
     // Start a little further out and glide in - a small "establishing shot"
-    this.pose.pos.copy(start.pos).add(new THREE.Vector3(0, hall.radius * 0.5, hall.radius * 0.6));
+    this.pose.pos.copy(start.pos).add(new THREE.Vector3(hall.radius * 0.5, hall.radius * 1.5, hall.radius * 1.1));
     this.pose.target.copy(start.target);
-    this.flight = { from: { pos: this.pose.pos.clone(), target: this.pose.target.clone() }, t: 0, dur: 1.8 };
+    this.flight = { from: { pos: this.pose.pos.clone(), target: this.pose.target.clone() }, t: 0, dur: 2.6 };
 
     this.bind();
     this.paint();
@@ -168,16 +184,159 @@ export class CinemaScene {
 
   buildLights() {
     const { hall } = this;
-    this.hemi = new THREE.HemisphereLight('#fff3e0', '#191825', 1.4);
-    this.sun = new THREE.DirectionalLight('#fff1dc', 1.6);
-    this.sun.position.set(hall.halfW * 0.6, hall.wallH + 14, hall.zBack + 10);
+    const R = hall.radius;
+    this.hemi = new THREE.HemisphereLight('#eef5ff', '#55663f', 1.4);
+    // Afternoon sun from behind-left: lights the seat backs and throws the wall's shadow across the stalls
+    this.sun = new THREE.DirectionalLight('#fff0d6', 1.6);
+    this.sun.position.set(-R * 1.5, R * 2.6, hall.zBack / 2 + R * 1.3);
+    this.sun.target.position.set(0, 0, hall.zBack / 2);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    const sc = this.sun.shadow.camera;
+    sc.left = -R * 3; sc.right = R * 3; sc.top = R * 3; sc.bottom = -R * 3;
+    sc.near = 1; sc.far = R * 8;
+    this.sun.shadow.bias = -0.0006;
+    this.sun.shadow.normalBias = 0.04;
+    this.scene.add(this.sun.target);
     this.fill = new THREE.DirectionalLight('#9fb4ff', 0.5);
-    this.fill.position.set(-hall.halfW, hall.wallH, -4);
+    this.fill.position.set(hall.halfW, hall.wallH, -4);
     // Light spilling off the screen onto the audience
     this.screenLight = new THREE.SpotLight('#bcd0ff', 0, 0, 1.25, 1, 1.1);
     this.screenLight.position.set(0, hall.screen.cy, 0.6);
     this.screenLight.target.position.set(0, hall.topY * 0.5, hall.zBack * 0.6);
     this.scene.add(this.hemi, this.sun, this.fill, this.screenLight, this.screenLight.target);
+  }
+
+  /**
+   * Everything outside the auditorium: lawn, paths, trees and the cinema building itself.
+   * This is the aerial "you have arrived" shot - the roof is off so you can see straight into the hall.
+   */
+  buildExterior() {
+    const { hall } = this;
+    const R = hall.radius;
+    const W = hall.halfW;
+    const cz = hall.zBack / 2;
+    const rand = seeded(24);
+    const g = new THREE.Group();
+    const ground = -0.3;
+
+    // Mown lawn
+    const lc = document.createElement('canvas');
+    lc.width = lc.height = 256;
+    const lx = lc.getContext('2d');
+    for (let i = 0; i < 8; i++) {
+      lx.fillStyle = i % 2 ? '#6fa550' : '#679c49';
+      lx.fillRect(i * 32, 0, 32, 256);
+    }
+    for (let i = 0; i < 2600; i++) {
+      lx.fillStyle = `rgba(${rand() > 0.5 ? '40,80,20' : '170,210,120'},${0.05 + rand() * 0.08})`;
+      lx.fillRect(rand() * 256, rand() * 256, 1.5 + rand() * 2, 1.5 + rand() * 2);
+    }
+    const lawnTex = new THREE.CanvasTexture(lc);
+    lawnTex.colorSpace = THREE.SRGBColorSpace;
+    lawnTex.wrapS = lawnTex.wrapT = THREE.RepeatWrapping;
+    lawnTex.repeat.set(R * 1.1, R * 1.1);
+    lawnTex.anisotropy = 4;
+    const lawn = new THREE.Mesh(new THREE.PlaneGeometry(R * 26, R * 26), new THREE.MeshStandardMaterial({ map: lawnTex, roughness: 1 }));
+    lawn.rotation.x = -Math.PI / 2;
+    lawn.position.set(0, ground, cz);
+    lawn.receiveShadow = true;
+    g.add(lawn);
+
+    // Paved plaza, a ring walk and paths out into the park
+    const paving = new THREE.MeshStandardMaterial({ color: '#d8d0c0', roughness: 0.95 });
+    const lobbyDepth = 7.5;
+    const plazaW = W * 2 + 11;
+    const plazaD = hall.zBack + lobbyDepth + 13;
+    const plazaZ = (hall.zBack + lobbyDepth) / 2;
+    const plaza = new THREE.Mesh(new THREE.BoxGeometry(plazaW, 0.1, plazaD), paving);
+    plaza.position.set(0, ground + 0.04, plazaZ);
+    plaza.receiveShadow = true;
+    g.add(plaza);
+    const ringR = R * 2.05;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(ringR - 0.6, ringR + 0.6, 96), paving);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(0, ground + 0.03, cz);
+    ring.receiveShadow = true;
+    g.add(ring);
+    const spokes = [0.35, 1.25, 2.2, 3.5, 4.4, 5.5];
+    for (const a of spokes) {
+      const len = R * 4.2;
+      const path = new THREE.Mesh(new THREE.PlaneGeometry(1.3, len), paving);
+      path.rotation.x = -Math.PI / 2;
+      path.rotation.z = -a + Math.PI / 2;
+      path.position.set(Math.cos(a) * (len / 2 + R * 0.4), ground + 0.02, cz + Math.sin(a) * (len / 2 + R * 0.4));
+      path.receiveShadow = true;
+      g.add(path);
+    }
+
+    // The building: pale outer walls around the hall, with the foyer block behind it
+    const shell = new THREE.MeshStandardMaterial({ color: '#efebe2', roughness: 0.85 });
+    const t = 0.8;
+    const H = hall.wallH + 0.45;
+    const backH = hall.topY + 1.1;
+    const outerW = W * 2 + 0.6 + t * 2;
+    const add = (geo, mat, x, y, z) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      g.add(m);
+      return m;
+    };
+    for (const sx of [-1, 1]) add(new THREE.BoxGeometry(t, H, hall.zBack + 1.5 + t), shell, sx * (W + 0.3 + t / 2), H / 2 + ground, (hall.zBack - 1.2 - t) / 2 + 0.15);
+    add(new THREE.BoxGeometry(outerW, H, t), shell, 0, H / 2 + ground, -1.2 - t / 2);
+    const foyerH = Math.max(3, backH - 0.6);
+    const foyerZ = hall.zBack + 0.3 + lobbyDepth / 2;
+    add(new THREE.BoxGeometry(outerW, foyerH, lobbyDepth), shell, 0, foyerH / 2 + ground, foyerZ);
+    const roof = add(new THREE.BoxGeometry(outerW - 0.7, 0.12, lobbyDepth - 0.7), new THREE.MeshStandardMaterial({ color: '#8f8b86', roughness: 1 }), 0, foyerH + ground + 0.06, foyerZ);
+    roof.castShadow = false;
+    // rooftop plant + a red entrance canopy
+    const metal = new THREE.MeshStandardMaterial({ color: '#b9bcc2', roughness: 0.5, metalness: 0.4 });
+    for (let i = 0; i < 4; i++) add(new THREE.BoxGeometry(1.5, 0.7, 1.1), metal, -outerW / 2 + 2 + i * 2.1, foyerH + ground + 0.47, foyerZ + lobbyDepth / 2 - 1.3);
+    add(new THREE.BoxGeometry(outerW * 0.5, 0.25, 2.4), new THREE.MeshStandardMaterial({ color: '#f84464', roughness: 0.6 }), 0, foyerH * 0.62 + ground, foyerZ + lobbyDepth / 2 + 1.2);
+
+    // Name on the roof, readable from the air
+    const sign = textTexture(`CINEVERSE${hall.features?.label ? `  ·  ${hall.features.label}` : ''}`, { w: 1024, h: 128, color: '#ffffff', font: '800 76px Inter, system-ui, sans-serif' });
+    const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(outerW * 0.8, 15), Math.min(outerW * 0.8, 15) / 8), new THREE.MeshBasicMaterial({ map: sign, transparent: true }));
+    signMesh.rotation.x = -Math.PI / 2;
+    signMesh.position.set(0, foyerH + ground + 0.14, foyerZ - 0.9);
+    g.add(signMesh);
+
+    // Trees scattered through the park, keeping clear of the building and the paths
+    const count = 170;
+    const canopy = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), count);
+    const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.16, 1, 6), new THREE.MeshStandardMaterial({ color: '#5b4330', roughness: 1 }), count);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const col = new THREE.Color();
+    let placed = 0;
+    let guard = 0;
+    while (placed < count && guard++ < 4000) {
+      const a = rand() * Math.PI * 2;
+      const r = R * (1.35 + rand() ** 1.4 * 4.4);
+      const x = Math.cos(a) * r;
+      const z = cz + Math.sin(a) * r;
+      if (Math.abs(x) < plazaW / 2 + 1.5 && Math.abs(z - plazaZ) < plazaD / 2 + 1.5) continue;
+      if (Math.abs(r - ringR) < 1.8) continue;
+      if (spokes.some((sa) => { const d = Math.abs(((a - sa + Math.PI * 3) % (Math.PI * 2)) - Math.PI); return d * r < 1.8; })) continue;
+      const s = 1 + rand() * 1.5;
+      q.setFromEuler(new THREE.Euler(0, rand() * 6.28, 0));
+      m.compose(new THREE.Vector3(x, ground + s * 1.9, z), q, new THREE.Vector3(s, s * (1.05 + rand() * 0.4), s));
+      canopy.setMatrixAt(placed, m);
+      canopy.setColorAt(placed, col.setHSL(0.27 + rand() * 0.09, 0.42 + rand() * 0.2, 0.2 + rand() * 0.14));
+      m.compose(new THREE.Vector3(x, ground + s * 0.5, z), q, new THREE.Vector3(s, s, s));
+      trunk.setMatrixAt(placed, m);
+      placed++;
+    }
+    canopy.count = placed;
+    trunk.count = placed;
+    canopy.castShadow = true;
+    canopy.receiveShadow = true;
+    trunk.castShadow = true;
+    g.add(canopy, trunk);
+
+    this.scene.add(g);
   }
 
   buildHallShell() {
@@ -190,12 +349,14 @@ export class CinemaScene {
 
     const floor = new THREE.Mesh(new THREE.BoxGeometry(W * 2, 0.2, hall.zBack + 1.2), new THREE.MeshStandardMaterial({ color: '#1d1a2c', roughness: 1 }));
     floor.position.set(0, -0.1, (hall.zBack - 1.2) / 2);
+    floor.receiveShadow = true;
     group.add(floor);
 
     // Stepped risers, one per row (stadium seating)
     for (const r of hall.rows) {
       const riser = new THREE.Mesh(new THREE.BoxGeometry(W * 2, r.y, r.depth), carpet);
       riser.position.set(0, r.y / 2, r.z);
+      riser.receiveShadow = true;
       group.add(riser);
     }
     const last = hall.rows[hall.rows.length - 1];
@@ -209,6 +370,7 @@ export class CinemaScene {
     for (const sx of [-1, 1]) {
       const wall = new THREE.Mesh(sideGeo, wallMat);
       wall.position.set(sx * (W + 0.15), hall.wallH / 2, (hall.zBack - 1.2) / 2);
+      wall.castShadow = true;
       group.add(wall);
     }
     // The back wall is cut down to a parapet so the camera can look in from behind the last row
@@ -217,28 +379,8 @@ export class CinemaScene {
     back.position.set(0, backH / 2, hall.zBack + 0.15);
     const front = new THREE.Mesh(new THREE.BoxGeometry(W * 2 + 0.6, hall.wallH, 0.3), wallMat);
     front.position.set(0, hall.wallH / 2, -1.05);
+    front.castShadow = true;
     group.add(back, front);
-
-    // A soft pool of light on the ground so the hall does not float in a black void
-    const glowCanvas = document.createElement('canvas');
-    glowCanvas.width = glowCanvas.height = 256;
-    const gctx = glowCanvas.getContext('2d');
-    const rg = gctx.createRadialGradient(128, 128, 10, 128, 128, 128);
-    rg.addColorStop(0, 'rgba(120, 96, 255, 0.5)');
-    rg.addColorStop(0.45, 'rgba(248, 68, 100, 0.14)');
-    rg.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    gctx.fillStyle = rg;
-    gctx.fillRect(0, 0, 256, 256);
-    const glowTex = new THREE.CanvasTexture(glowCanvas);
-    glowTex.colorSpace = THREE.SRGBColorSpace;
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(hall.radius * 5.5, hall.radius * 5.5),
-      new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, fog: false }),
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(0, -0.25, hall.zBack / 2);
-    group.add(ground);
-    this.ground = ground;
 
     // Acoustic panels + warm sconces down both side walls
     const panelCount = Math.floor(hall.zBack / 2.4);
@@ -339,6 +481,32 @@ export class CinemaScene {
     stage.position.set(0, 0.25, -0.1);
     this.scene.add(frame, screen, stage);
 
+    // ScreenX wraps the film onto the side walls; ICE lines them with LED panels that follow its colours
+    const f = hall.features || {};
+    this.sidePanels = [];
+    if (f.screenX || f.ice) {
+      const len = Math.min(hall.zBack * 0.66, w);
+      for (const sx of [-1, 1]) {
+        const geo = new THREE.PlaneGeometry(len, h * (f.ice ? 0.8 : 1), f.ice ? 12 : 1, 1);
+        let mat;
+        if (f.screenX) {
+          const uv = geo.attributes.uv;
+          for (let i = 0; i < uv.count; i++) {
+            const u = uv.getX(i); // the end next to the screen continues the picture's edge, mirrored
+            uv.setX(i, sx < 0 ? 0.3 * (1 - u) : 1 - 0.3 * u);
+          }
+          mat = new THREE.MeshBasicMaterial({ map: this.screenTex, toneMapped: false, transparent: true, opacity: 0.4 });
+        } else {
+          mat = new THREE.MeshBasicMaterial({ color: '#7fb0ff', transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
+        }
+        const panel = new THREE.Mesh(geo, mat);
+        panel.position.set(sx * (hall.halfW - 0.13), cy, 0.7 + len / 2);
+        panel.rotation.y = -sx * Math.PI / 2;
+        this.sidePanels.push(panel);
+        this.scene.add(panel);
+      }
+    }
+
     if (this.movie.posterUrl) {
       const img = new Image();
       img.crossOrigin = 'anonymous'; // without CORS the image simply fails to load and we keep the title card
@@ -388,16 +556,24 @@ export class CinemaScene {
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.font = '600 24px Inter, system-ui, sans-serif';
     ctx.fillText('N O W   S H O W I N G', textX, H * 0.3);
-    ctx.fillStyle = '#ffffff';
     const title = this.movie.title || 'CineVerse';
     let size = 84;
     ctx.font = `800 ${size}px Inter, system-ui, sans-serif`;
     const maxW = this.poster ? W * 0.55 : W * 0.85;
     while (ctx.measureText(title).width > maxW && size > 30) { size -= 4; ctx.font = `800 ${size}px Inter, system-ui, sans-serif`; }
+    const f = this.hall.features || {};
+    if (f.threeD) { // red/cyan fringes: the picture you see without the glasses on
+      ctx.fillStyle = 'rgba(255, 50, 50, 0.85)'; ctx.fillText(title, textX - 6, H * 0.52);
+      ctx.fillStyle = 'rgba(40, 230, 255, 0.85)'; ctx.fillText(title, textX + 6, H * 0.52);
+    }
+    ctx.fillStyle = '#ffffff';
     ctx.fillText(title, textX, H * 0.52);
     ctx.fillStyle = '#ff6b81';
     ctx.font = '700 26px Inter, system-ui, sans-serif';
-    ctx.fillText('▶ CineVerse', textX, H * 0.72);
+    ctx.fillText(f.label ? `▶ CineVerse  ·  ${f.label}` : '▶ CineVerse', textX, H * 0.72);
+    if (this.sidePanels?.length && f.ice) {
+      for (const p of this.sidePanels) p.material.color.setHSL(((hue + 300) % 360) / 360, 0.8, 0.55);
+    }
 
     // letterbox bars + light sweep
     const sweep = ((t * 0.12) % 1.6) * W - W * 0.3;
@@ -427,6 +603,7 @@ export class CinemaScene {
         mesh.setColorAt(i, COLORS.white);
         s.mesh = mesh;
         s.index = i;
+        mesh.receiveShadow = true;
         s.base = new THREE.Color(tierOf(s.category).color);
       });
       mesh.userData.seats = list;
@@ -450,7 +627,7 @@ export class CinemaScene {
     this.blockMeshes = [];
     for (const b of this.hall.blocks.values()) {
       const geo = new THREE.BoxGeometry(b.width + 0.35, b.height + 0.25, b.depth + 0.2);
-      const color = new THREE.Color(b.color);
+      const color = COLORS.hover.clone();
       const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
         color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
       }));
@@ -549,9 +726,11 @@ export class CinemaScene {
       else if (this.preview.includes(s.id)) c.copy(COLORS.preview);
       else {
         c.copy(s.base);
-        if (focus && s.blockId === focus) c.lerp(COLORS.white, this.mode === 'overview' ? 0.4 : 0.22);
-        else if (this.mode === 'block' && focus) c.multiplyScalar(0.6);
-        if (this.hoverSeat === s.id) c.lerp(COLORS.white, 0.65);
+        if (focus && s.blockId === focus) {
+          // hovered stand glows orange from the air; once you are in it, its free seats turn white
+          if (this.mode === 'overview') c.lerp(COLORS.hover, 0.85); else c.lerp(COLORS.white, 0.82);
+        }
+        if (this.hoverSeat === s.id) c.lerp(COLORS.hover, 0.7);
       }
       s.mesh.setColorAt(s.index, c);
     }
@@ -679,6 +858,14 @@ export class CinemaScene {
       this.camera.updateProjectionMatrix();
     }
 
+    // 4DX: the seat moves with the film
+    if (this.mode === 'pov' && !this.flight && this.hall.features?.fourDX) {
+      const t = this.clock.elapsedTime;
+      this.camera.position.y += Math.sin(t * 2.1) * 0.035 + Math.sin(t * 5.3) * 0.008;
+      this.camera.rotateZ(Math.sin(t * 1.3) * 0.016);
+      this.camera.rotateX(Math.sin(t * 1.9) * 0.007);
+    }
+
     const inset = this.mode === 'pov' ? 0 : (this.insetTarget || 0);
     this.inset = (this.inset || 0) + (inset - (this.inset || 0)) * (1 - Math.exp(-dt * 4));
     const w = this.container.clientWidth || 1;
@@ -688,12 +875,12 @@ export class CinemaScene {
   }
 
   applyLights(level) {
-    this.hemi.intensity = 0.34 + 2.1 * level;
-    this.sun.intensity = 0.05 + 2.0 * level;
-    this.fill.intensity = 0.1 + 0.9 * level;
-    this.ground.material.opacity = 0.25 + 0.75 * level;
+    this.hemi.intensity = 0.34 + 1.25 * level;
+    this.sun.intensity = 0.04 + 2.7 * level;
+    this.fill.intensity = 0.1 + 0.35 * level;
     this.screenLight.intensity = 30 + 520 * (1 - level);
     this.beam.material.opacity = 0.085 * (1 - level);
+    for (const p of this.sidePanels || []) p.material.opacity = this.hall.features.screenX ? 0.2 + 0.75 * (1 - level) : 0.08 + 0.5 * (1 - level);
     this.scene.background.lerpColors(this.bgMovie, this.bgHouse, level);
     this.scene.fog.color.copy(this.scene.background);
   }
@@ -825,8 +1012,8 @@ export class CinemaScene {
   showBlockTooltip(b) {
     const left = b.seats.filter((s) => !this.unavailable.has(s.id)).length;
     this.setTooltip({
-      kicker: b.category.toUpperCase(),
-      title: b.name ? `${b.name} block` : `${b.category} block`,
+      kicker: `${b.category}${b.name ? ` · ${b.name}` : ''}`.toUpperCase(),
+      title: `Block ${b.code}`,
       sub: left ? `● ${left} left` : 'Sold out',
       subClass: left ? (left < b.seats.length * 0.3 ? 'few' : 'ok') : 'none',
       price: this.formatPrice(b.price),
@@ -916,10 +1103,13 @@ export class CinemaScene {
     const fps = p.frames / p.time;
     p.frames = 0;
     p.time = 0;
-    if (fps < 26 && this.pixelRatio > 0.6) {
+    if (fps >= 26) return;
+    if (this.pixelRatio > 0.6) {
       this.pixelRatio = Math.max(0.6, this.pixelRatio * 0.75);
       this.renderer.setPixelRatio(this.pixelRatio);
       this.resize();
+    } else if (this.sun.castShadow && fps < 20) {
+      this.sun.castShadow = false; // last resort on very slow devices: drop the sun shadows
     }
   }
 

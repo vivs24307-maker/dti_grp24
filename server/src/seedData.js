@@ -48,6 +48,21 @@ export const layouts = {
       { name: 'Classic', price: 450, rows: rows('A', 'D'), cols: 20, aisles: [5, 15] },
     ],
   },
+  // 4DX halls are small: motion seats come in groups of four
+  FOURDX: {
+    categories: [
+      { name: 'Premium', price: 520, rows: rows('D', 'H'), cols: 12, aisles: [4, 8] },
+      { name: 'Classic', price: 420, rows: rows('A', 'C'), cols: 12, aisles: [4, 8] },
+    ],
+  },
+  // Dolby Cinema / ICE: a luxury hall that is almost all recliners
+  LUXE: {
+    categories: [
+      { name: 'Sofa', price: 1300, rows: ['H'], cols: 8, aisles: [4] },
+      { name: 'Recliner', price: 950, rows: rows('C', 'G'), cols: 12, aisles: [6] },
+      { name: 'Premium', price: 600, rows: ['A', 'B'], cols: 16, aisles: [4, 12] },
+    ],
+  },
 };
 
 const AMENITIES = {
@@ -56,23 +71,27 @@ const AMENITIES = {
   Cinepolis: ['M-Ticket', 'Food & Beverage', 'Parking', 'Recliners', 'Dolby Atmos'],
 };
 
-// [city slug, brand, name, address, screens[]]
+// Which seat layout a screen technology uses (anything not listed uses the cinema chain's standard hall)
+const TECH_LAYOUT = { IMAX: 'IMAX', PXL: 'IMAX', '4DX': 'FOURDX', ICE: 'LUXE', Dolby: 'LUXE' };
+
+// [city slug, brand, name, address, screens[[name, technology]]]
+// Technologies: Standard, IMAX, PXL, 4DX, ScreenX, ICE, Dolby  (see lib/formats.js)
 export const theatres = [
-  ['mumbai', 'PVR', 'PVR: Phoenix Palladium', 'Lower Parel, Mumbai', [['Audi 1', '2D'], ['IMAX', 'IMAX']]],
-  ['mumbai', 'INOX', 'INOX: R-City Mall', 'Ghatkopar West, Mumbai', [['Screen 1', '2D'], ['Screen 2', '2D']]],
-  ['mumbai', 'Cinepolis', 'Cinepolis: Andheri West', 'Fun Republic, Andheri West, Mumbai', [['Audi 3', '2D'], ['4DX', '4DX']]],
-  ['delhi-ncr', 'PVR', 'PVR: Select Citywalk', 'Saket, New Delhi', [['Audi 2', '2D'], ['IMAX', 'IMAX']]],
-  ['delhi-ncr', 'INOX', 'INOX: Nehru Place', 'Nehru Place, New Delhi', [['Screen 1', '2D'], ['Screen 4', '2D']]],
-  ['delhi-ncr', 'Cinepolis', 'Cinepolis: DLF Avenue', 'Saket, New Delhi', [['Audi 1', '2D']]],
-  ['bengaluru', 'PVR', 'PVR: Orion Mall', 'Rajajinagar, Bengaluru', [['Audi 5', '2D'], ['IMAX', 'IMAX']]],
-  ['bengaluru', 'INOX', 'INOX: Garuda Mall', 'Magrath Road, Bengaluru', [['Screen 2', '2D']]],
-  ['bengaluru', 'Cinepolis', 'Cinepolis: Nexus Shantiniketan', 'Whitefield, Bengaluru', [['Audi 2', '2D'], ['Audi 4', '3D']]],
-  ['pune', 'PVR', 'PVR: Pavilion Mall', 'Shivajinagar, Pune', [['Audi 1', '2D']]],
-  ['pune', 'INOX', 'INOX: Bund Garden', 'Bund Garden Road, Pune', [['Screen 1', '2D'], ['Screen 3', '2D']]],
-  ['pune', 'Cinepolis', 'Cinepolis: Seasons Mall', 'Magarpatta, Pune', [['Audi 6', '2D']]],
-  ['hyderabad', 'PVR', 'PVR: Inorbit Mall', 'HITEC City, Hyderabad', [['Audi 3', '2D'], ['IMAX', 'IMAX']]],
-  ['hyderabad', 'INOX', 'INOX: GVK One', 'Banjara Hills, Hyderabad', [['Screen 2', '2D']]],
-  ['hyderabad', 'Cinepolis', 'Cinepolis: Sarath City', 'Kondapur, Hyderabad', [['Audi 1', '2D'], ['Audi 7', '3D']]],
+  ['mumbai', 'PVR', 'PVR: Phoenix Palladium', 'Lower Parel, Mumbai', [['Audi 1', 'Standard'], ['IMAX', 'IMAX'], ['P[XL]', 'PXL'], ['4DX', '4DX']]],
+  ['mumbai', 'INOX', 'INOX: R-City Mall', 'Ghatkopar West, Mumbai', [['Screen 1', 'Standard'], ['Screen 2', 'Standard'], ['ScreenX', 'ScreenX'], ['ICE', 'ICE']]],
+  ['mumbai', 'Cinepolis', 'Cinepolis: Andheri West', 'Fun Republic, Andheri West, Mumbai', [['Audi 3', 'Standard'], ['4DX', '4DX'], ['Dolby Cinema', 'Dolby']]],
+  ['delhi-ncr', 'PVR', 'PVR: Select Citywalk', 'Saket, New Delhi', [['Audi 2', 'Standard'], ['IMAX', 'IMAX'], ['P[XL]', 'PXL'], ['4DX', '4DX']]],
+  ['delhi-ncr', 'INOX', 'INOX: Nehru Place', 'Nehru Place, New Delhi', [['Screen 1', 'Standard'], ['Screen 4', 'Standard'], ['ScreenX', 'ScreenX']]],
+  ['delhi-ncr', 'Cinepolis', 'Cinepolis: DLF Avenue', 'Saket, New Delhi', [['Audi 1', 'Standard'], ['Dolby Cinema', 'Dolby']]],
+  ['bengaluru', 'PVR', 'PVR: Orion Mall', 'Rajajinagar, Bengaluru', [['Audi 5', 'Standard'], ['IMAX', 'IMAX'], ['ScreenX', 'ScreenX']]],
+  ['bengaluru', 'INOX', 'INOX: Garuda Mall', 'Magrath Road, Bengaluru', [['Screen 2', 'Standard'], ['ICE', 'ICE']]],
+  ['bengaluru', 'Cinepolis', 'Cinepolis: Nexus Shantiniketan', 'Whitefield, Bengaluru', [['Audi 2', 'Standard'], ['Audi 4', 'Standard'], ['4DX', '4DX']]],
+  ['pune', 'PVR', 'PVR: Pavilion Mall', 'Shivajinagar, Pune', [['Audi 1', 'Standard'], ['P[XL]', 'PXL'], ['4DX', '4DX']]],
+  ['pune', 'INOX', 'INOX: Bund Garden', 'Bund Garden Road, Pune', [['Screen 1', 'Standard'], ['Screen 3', 'Standard'], ['IMAX', 'IMAX']]],
+  ['pune', 'Cinepolis', 'Cinepolis: Seasons Mall', 'Magarpatta, Pune', [['Audi 6', 'Standard'], ['Dolby Cinema', 'Dolby']]],
+  ['hyderabad', 'PVR', 'PVR: Inorbit Mall', 'HITEC City, Hyderabad', [['Audi 3', 'Standard'], ['IMAX', 'IMAX'], ['4DX', '4DX']]],
+  ['hyderabad', 'INOX', 'INOX: GVK One', 'Banjara Hills, Hyderabad', [['Screen 2', 'Standard'], ['ScreenX', 'ScreenX'], ['ICE', 'ICE']]],
+  ['hyderabad', 'Cinepolis', 'Cinepolis: Sarath City', 'Kondapur, Hyderabad', [['Audi 1', 'Standard'], ['Audi 7', 'Standard'], ['P[XL]', 'PXL']]],
 ].map(([city, brand, name, address, screens]) => ({
   city,
   brand,
@@ -82,7 +101,7 @@ export const theatres = [
   screens: screens.map(([sName, format]) => ({
     name: sName,
     format,
-    layout: format === 'IMAX' ? layouts.IMAX : layouts[brand],
+    layout: layouts[TECH_LAYOUT[format] || brand],
   })),
 }));
 
@@ -109,7 +128,7 @@ export const movies = [
     poster_url: 'https://m.media-amazon.com/images/M/MV5BZmM3ZDU3ODItZmY5Yi00OTQ2LWE5OTctZTA5NDBhMWJkOGY3XkEyXkFqcGc@._V1_.jpg',
   },
   {
-    title: 'Kalki 2898 AD', genres: ['Sci-Fi', 'Action'], languages: ['Telugu', 'Hindi', 'Tamil'], duration_min: 181, certificate: 'UA',
+    title: 'Kalki 2898 AD', has_3d: 1, genres: ['Sci-Fi', 'Action'], languages: ['Telugu', 'Hindi', 'Tamil'], duration_min: 181, certificate: 'UA',
     release_date: '2024-06-27', director: 'Nag Ashwin',
     cast: ['Prabhas', 'Amitabh Bachchan', 'Kamal Haasan', 'Deepika Padukone'],
     description: 'A mythological sci-fi epic set in a dystopian future, where an unlikely hero must protect a child of prophecy.',
@@ -165,7 +184,7 @@ export const movies = [
     poster_url: 'https://upload.wikimedia.org/wikipedia/en/f/f0/Shaitaan_2024_film_theatrical_poster.jpeg',
   },
   {
-    title: 'Dune: Part Two', genres: ['Sci-Fi', 'Action'], languages: ['English', 'Hindi'], duration_min: 166, certificate: 'UA',
+    title: 'Dune: Part Two', has_3d: 1, genres: ['Sci-Fi', 'Action'], languages: ['English', 'Hindi'], duration_min: 166, certificate: 'UA',
     release_date: '2024-03-01', director: 'Denis Villeneuve',
     cast: ['Timothée Chalamet', 'Zendaya', 'Rebecca Ferguson', 'Austin Butler'],
     description: 'Paul Atreides unites with the Fremen on a warpath of revenge against those who destroyed his family.',
@@ -179,14 +198,14 @@ export const movies = [
     poster_url: 'https://upload.wikimedia.org/wikipedia/en/9/90/Animal_%282023_film%29_poster.jpg',
   },
   {
-    title: 'RRR', genres: ['Action', 'Drama'], languages: ['Telugu', 'Hindi', 'Tamil'], duration_min: 187, certificate: 'UA',
+    title: 'RRR', has_3d: 1, genres: ['Action', 'Drama'], languages: ['Telugu', 'Hindi', 'Tamil'], duration_min: 187, certificate: 'UA',
     release_date: '2022-03-25', director: 'S. S. Rajamouli',
     cast: ['N. T. Rama Rao Jr.', 'Ram Charan', 'Alia Bhatt', 'Ajay Devgn'],
     description: 'A fictional tale of two legendary revolutionaries and their journey far away from home in the 1920s.',
     poster_url: 'https://upload.wikimedia.org/wikipedia/en/d/d7/RRR_Poster.jpg',
   },
   {
-    title: 'Inside Out 2', genres: ['Comedy', 'Animation', 'Family'], languages: ['English', 'Hindi'], duration_min: 96, certificate: 'U',
+    title: 'Inside Out 2', has_3d: 1, genres: ['Comedy', 'Animation', 'Family'], languages: ['English', 'Hindi'], duration_min: 96, certificate: 'U',
     release_date: '2024-06-14', director: 'Kelsey Mann',
     cast: ['Amy Poehler', 'Maya Hawke', 'Phyllis Smith'],
     description: "Riley is a teenager now, and Joy and friends must make room for some unexpected new emotions.",
@@ -200,7 +219,7 @@ export const movies = [
     poster_url: 'https://upload.wikimedia.org/wikipedia/en/thumb/f/f4/Welcome_poster_2007.jpg/250px-Welcome_poster_2007.jpg',
   },
   {
-    title: 'Spider-Man: Across the Spider-Verse', genres: ['Action', 'Animation'], languages: ['English', 'Hindi'], duration_min: 140, certificate: 'U',
+    title: 'Spider-Man: Across the Spider-Verse', has_3d: 1, genres: ['Action', 'Animation'], languages: ['English', 'Hindi'], duration_min: 140, certificate: 'U',
     release_date: '2023-06-02', director: 'Joaquim Dos Santos, Kemp Powers, Justin K. Thompson',
     cast: ['Shameik Moore', 'Hailee Steinfeld', 'Oscar Isaac'],
     description: 'Miles Morales is catapulted across the Multiverse, where he meets a team of Spider-People.',
@@ -226,6 +245,17 @@ export const movies = [
     cast: ['Christian Bale', 'Heath Ledger', 'Aaron Eckhart', 'Gary Oldman'],
     description: 'Batman faces the Joker, a criminal mastermind who wants to plunge Gotham City into anarchy.',
     poster_url: 'https://upload.wikimedia.org/wikipedia/en/1/1c/The_Dark_Knight_%282008_film%29.jpg',
+  },
+  {
+    title: 'Ramayana: Rise of a Legend', featured: 1, has_3d: 1,
+    tagline: 'Our truth. Our history.',
+    genres: ['Mythology', 'Epic', 'Action'], languages: ['Hindi', 'English'], duration_min: 195, certificate: 'UA',
+    release_date: '2026-11-05', director: 'Nitesh Tiwari',
+    cast: ['Ranbir Kapoor', 'Sai Pallavi', 'Yash', 'Sunny Deol', 'Ravi Dubey'],
+    description: 'The first part of the epic: Prince Rama, his wife Sita and his brother Lakshmana are sent into exile, and the demon king Ravana sets the great war in motion. Filmed for IMAX, with music by Hans Zimmer and A. R. Rahman.',
+    // Original title-card artwork shipped with the app. Replace the file with the official poster,
+    // or set a poster URL from the admin dashboard.
+    poster_url: '/posters/ramayana.svg',
   },
 ];
 

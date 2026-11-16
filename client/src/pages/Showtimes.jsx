@@ -30,6 +30,7 @@ export function ShowChip({ show }) {
       title={show.minPrice ? `${inr(show.minPrice)} – ${inr(show.maxPrice)} · ${show.screen}` : show.screen}>
       <strong>{fmtTime(show.startsAt)}</strong>
       <small>{show.format !== '2D' ? show.format : show.language}</small>
+      {show.format !== '2D' && <small className="lang">{show.language}</small>}
     </button>
   );
 }
@@ -44,6 +45,8 @@ export default function Showtimes() {
   const [movieDates, setMovieDates] = useState([]);
 
   const q = useAsync(() => api.get(`/movies/${id}/shows${qs({ city: citySlug, date, language, format })}`), [id, citySlug, date, language, format]);
+  const formatInfo = useAsync(() => api.get('/formats'), []);
+  const about = (name) => formatInfo.data?.formats.find((f) => f.name === name)?.about || '';
 
   // If "today" has no shows left, jump to the first date that does
   useEffect(() => {
@@ -84,10 +87,12 @@ export default function Showtimes() {
               <button key={l} className={`chip ${language === l ? 'active' : ''}`} onClick={() => update('language', l)}>{l}</button>
             ))}
             {formats.length > 1 && formats.map((f) => (
-              <button key={f} className={`chip ${format === f ? 'active' : ''}`} onClick={() => update('format', f)}>{f}</button>
+              <button key={f} className={`chip ${format === f ? 'active' : ''}`} onClick={() => update('format', f)} title={about(f)}>{f}</button>
             ))}
           </div>
         </div>
+
+        {format && about(format) && <p className="format-about"><strong>{format}</strong> — {about(format)}</p>}
 
         <div className="legend small muted">
           <span><i className="dot dot-ok" /> Available</span>

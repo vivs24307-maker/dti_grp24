@@ -6,6 +6,7 @@ import { MOVIE_SELECT, formatMovie, formatTheatre } from '../lib/format.js';
 import { isValidDate, toLocalDate, toLocalDateTime } from '../lib/time.js';
 import { cleanString } from '../lib/validate.js';
 import { couponDiscount } from '../lib/pricing.js';
+import { TECH, describeFormat, sortFormats, sortTech, techName } from '../lib/formats.js';
 
 const router = Router();
 
@@ -60,7 +61,7 @@ router.get('/movies', (req, res) => {
   }
 
   const order = {
-    popular: 'votes DESC, rating DESC, m.id ASC',
+    popular: 'm.featured DESC, votes DESC, rating DESC, m.id ASC',
     rating: 'rating DESC NULLS LAST, votes DESC',
     newest: 'm.release_date DESC',
     title: 'm.title COLLATE NOCASE ASC',
@@ -82,8 +83,42 @@ function getMovie(idOrSlug) {
   return formatMovie(row);
 }
 
+/** Every format a film is playing in right now (optionally only in one city). */
+function movieFormats(movieId, cityId = null) {
+  const rows = db.prepare(`
+    SELECT DISTINCT s.format FROM shows s
+    JOIN screens sc ON sc.id = s.screen_id JOIN theatres t ON t.id = sc.theatre_id
+    WHERE s.movie_id = ? AND s.starts_at >= ? AND (? IS NULL OR t.city_id = ?)`).all(movieId, toLocalDateTime(), cityId, cityId);
+  return sortFormats(rows.map((r) => r.format)).map((f) => ({ name: f, about: describeFormat(f) }));
+}
+
+router.get('/formats', (_req, res) => {
+  res.json({
+    formats: Object.values(TECH).flatMap((t) => [t.flat, t.stereo]).map((f) => ({ name: f, about: describeFormat(f) })),
+  });
+});
+
 router.get('/movies/:id', (req, res) => {
-  res.json({ movie: getMovie(req.params.id) });
+  const movie = getMovie(req.params.id);
+  const city = req.query.city ? cityBySlug(req.query.city) : null;
+  res.json({ movie: { ...movie, formats: movieFormats(movie.id, city?.id ?? null) } });
+});
+
+/**
+ * The next show worth jumping straight into (used by "Pick seats in 3D" on the home page).
+ * Prefers the biggest experience on offer: IMAX 3D first, then other premium formats, then the earliest show.
+ */
+router.get('/movies/:id/next-show', (req, res) => {
+  const movie = getMovie(req.params.id);
+  const city = cityBySlug(req.query.city || 'mumbai');
+  const show = db.prepare(`
+    SELECT s.id, s.starts_at, s.format, s.language, t.name AS theatre_name
+    FROM shows s JOIN screens sc ON sc.id = s.screen_id JOIN theatres t ON t.id = sc.theatre_id
+    WHERE s.movie_id = ? AND t.city_id = ? AND s.starts_at >= ?
+    ORDER BY (s.format = 'IMAX 3D') DESC, (s.format LIKE 'IMAX%') DESC, (sc.format != 'Standard') DESC, s.starts_at
+    LIMIT 1`).get(movie.id, city.id, toLocalDateTime(new Date(Date.now() + 30 * 60_000)));
+  if (!show) throw notFound(`No upcoming shows for this film in ${city.name}`);
+  res.json({ show });
 });
 
 /** Showtimes for a movie in a city on a date, grouped by theatre. */
@@ -138,7 +173,7 @@ router.get('/movies/:id/shows', (req, res) => {
     date,
     dates: [...new Set(meta.map((m) => m.date))],
     languages: [...new Set(meta.map((m) => m.language))],
-    formats: [...new Set(meta.map((m) => m.format))],
+    formats: sortFormats([...new Set(meta.map((m) => m.format))]),
     theatres: [...theatres.values()],
   });
 });
@@ -174,7 +209,9 @@ router.get('/theatres', (req, res) => {
   const theatres = db.prepare(`
     SELECT t.*, (SELECT GROUP_CONCAT(DISTINCT format) FROM screens WHERE theatre_id = t.id) AS formats
     FROM theatres t WHERE t.city_id = ? ORDER BY t.name`).all(city.id).map((t) => ({
-      ...formatTheatre(t), formats: t.formats ? t.formats.split(',') : [],
+      ...formatTheatre(t),
+      // screen technologies -> the names people know them by
+      formats: sortTech([...new Set(t.formats ? t.formats.split(',') : [])]).map(techName),
     }));
   res.json({ city, theatres });
 });

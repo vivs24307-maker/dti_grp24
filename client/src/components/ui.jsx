@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PLACEHOLDER_POSTER, certClass } from '../utils.js';
+import { certClass, titleCard } from '../utils.js';
 
 export function Loader({ label = 'Loading…' }) {
   return (
@@ -32,9 +32,10 @@ export function ErrorBox({ error, onRetry }) {
 }
 
 export function Poster({ src, alt, className = '' }) {
-  const [url, setUrl] = useState(src || PLACEHOLDER_POSTER);
-  useEffect(() => { setUrl(src || PLACEHOLDER_POSTER); }, [src]);
-  return <img className={className} src={url} alt={alt} loading="lazy" onError={() => setUrl(PLACEHOLDER_POSTER)} />;
+  const fallback = titleCard(alt);
+  const [url, setUrl] = useState(src || fallback);
+  useEffect(() => { setUrl(src || fallback); }, [src, fallback]);
+  return <img className={className} src={url} alt={alt} loading="lazy" onError={() => setUrl(fallback)} />;
 }
 
 export function Cert({ value }) {

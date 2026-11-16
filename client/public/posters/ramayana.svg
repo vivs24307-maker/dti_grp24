@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 900" width="600" height="900">
+  <!-- Original CineVerse title card (not the official poster). Replace this file, or set a poster URL in the admin dashboard. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#150a2b"/>
+      <stop offset="0.38" stop-color="#5a1230"/>
+      <stop offset="0.66" stop-color="#c2461c"/>
+      <stop offset="1" stop-color="#f6a623"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fff6d8"/>
+      <stop offset="0.35" stop-color="#ffd27a"/>
+      <stop offset="0.7" stop-color="#ff9a2e" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ff9a2e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff3c4"/>
+      <stop offset="0.5" stop-color="#f5c451"/>
+      <stop offset="1" stop-color="#b9781a"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="900" fill="url(#sky)"/>
+  <g fill="#fff" opacity="0.7">
+    <circle cx="70" cy="80" r="1.6"/><circle cx="180" cy="40" r="1.2"/><circle cx="310" cy="95" r="1.4"/><circle cx="455" cy="55" r="1.7"/>
+    <circle cx="540" cy="130" r="1.2"/><circle cx="110" cy="170" r="1.1"/><circle cx="400" cy="160" r="1.2"/><circle cx="250" cy="150" r="1"/>
+  </g>
+  <circle cx="300" cy="470" r="250" fill="url(#sun)"/>
+  <circle cx="300" cy="470" r="118" fill="#fff1c9" opacity="0.92"/>
+  <!-- bow and arrow -->
+  <g fill="none" stroke="#3a0d16" stroke-linecap="round">
+    <path d="M214 372 C 330 400, 372 500, 300 590" stroke-width="11"/>
+    <path d="M214 372 L 300 590" stroke-width="3"/>
+    <path d="M196 548 L 404 380" stroke-width="7"/>
+  </g>
+  <path d="M404 380 l-34 6 l28 22 z" fill="#3a0d16"/>
+  <path d="M196 548 l-16 -4 l8 16 z M212 535 l-18 -6 l8 18 z" fill="#3a0d16"/>
+  <!-- distant palace and hills -->
+  <path d="M0 700 L60 660 L120 690 L190 640 L250 680 L250 640 L262 640 L262 610 L270 596 L278 610 L278 640 L300 640 L300 600 L310 580 L320 600 L320 640 L342 640 L342 610 L350 596 L358 610 L358 640 L370 640 L370 680 L430 645 L500 690 L560 655 L600 685 L600 900 L0 900 Z" fill="#4a0f1d"/>
+  <path d="M0 760 L90 720 L200 765 L320 715 L430 760 L530 725 L600 750 L600 900 L0 900 Z" fill="#2a0812"/>
+  <text x="300" y="812" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="76" font-weight="700" letter-spacing="8" fill="url(#gold)">RAMAYANA</text>
+  <text x="300" y="852" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="22" letter-spacing="9" fill="#ffe6ad">RISE OF A LEGEND</text>
+  <text x="300" y="60" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" letter-spacing="6" fill="#ffd9a0" opacity="0.9">IMAX 3D · NOW IN CINEMAS</text>
+</svg>

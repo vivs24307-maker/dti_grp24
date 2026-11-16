@@ -719,3 +719,20 @@ button.eticket-view:hover img { transform: scale(1.06); }
   .eticket:not(.open) .eticket-total strong { font-size: 1.15rem; }
   .eticket:has(.eticket-front) ~ .stage-hint, .stage:has(.eticket) .stage-hint { display: none; }
 }
+
+/* ============ Formats, featured film, reel colours ============ */
+.hero-tagline { font-size: 1.15rem; font-style: italic; color: #ffd9a0; margin: -6px 0 12px; }
+.format-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.format-chip { padding: 4px 10px; border-radius: 6px; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.04em; color: #fff; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.22); transition: all 0.15s; }
+.format-chip:hover { background: var(--accent); border-color: var(--accent); }
+.format-about { padding: 10px 14px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); font-size: 0.88rem; color: #d5d5df; margin-bottom: 10px; }
+.show-chip small.lang { font-size: 0.6rem; opacity: 0.8; }
+.form label.check { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; color: var(--text); }
+.form label.check input { width: auto; accent-color: var(--accent); }
+.thumb-btn { border-radius: 6px; outline-offset: 2px; }
+.thumb-btn:hover .thumb { outline: 2px solid var(--accent); }
+.poster-edit { display: flex; gap: 6px; margin-top: 8px; min-width: 260px; }
+.stage-format { display: inline-block; vertical-align: middle; margin-left: 6px; padding: 2px 8px; border-radius: 6px; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.06em; color: #1a1400; background: linear-gradient(135deg, #f7d047, #e0a800); }
+.stage-legend .k-sel { background: #ff8a00; }
+.stage-legend .k-sold { background: #2f6fed; }
+.eticket-seats button { color: #8a3c00; background: #ffe6cc; }

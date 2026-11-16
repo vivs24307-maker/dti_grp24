@@ -3,10 +3,10 @@
 // No three.js in here on purpose, so it stays easy to reason about (and to unit test).
 
 export const TIERS = {
-  Classic: { kind: 'std', w: 0.62, depth: 1.05, rise: 0.34, color: '#d02c44' },
-  Premium: { kind: 'std', w: 0.62, depth: 1.05, rise: 0.34, color: '#3f73ff' },
-  Recliner: { kind: 'recliner', w: 0.96, depth: 1.75, rise: 0.46, color: '#9a5cff' },
-  Sofa: { kind: 'sofa', w: 1.32, depth: 1.85, rise: 0.5, color: '#f0b23c' },
+  Classic: { kind: 'std', w: 0.62, depth: 1.05, rise: 0.34, color: '#ff5a4d' },
+  Premium: { kind: 'std', w: 0.62, depth: 1.05, rise: 0.34, color: '#c8102e' },
+  Recliner: { kind: 'recliner', w: 0.96, depth: 1.75, rise: 0.46, color: '#8f3fe0' },
+  Sofa: { kind: 'sofa', w: 1.32, depth: 1.85, rise: 0.5, color: '#f2b441' },
 };
 const DEFAULT_TIER = TIERS.Premium;
 const SEAT_GAP = 0.07;
@@ -20,11 +20,27 @@ export function tierOf(name) {
   return TIERS[name] || DEFAULT_TIER;
 }
 
+/** What the show's format ("IMAX 3D", "4DX", "ScreenX"...) means for the hall. */
+export function formatFeatures(format = '') {
+  const f = String(format);
+  return {
+    label: f,
+    imax: f.includes('IMAX'),
+    pxl: f.includes('P[XL]'),
+    fourDX: f.includes('4DX'),
+    screenX: f.includes('ScreenX'),
+    ice: f.includes('ICE'),
+    dolby: f.includes('Dolby'),
+    threeD: /\b3D\b/.test(f),
+  };
+}
+
 /**
  * World axes: the screen sits at z = 0 facing +z, rows go back along +z and climb in y.
  * Seat column 1 is on the left when you look at the screen (negative x).
  */
-export function buildHall(layout) {
+export function buildHall(layout, { format = '' } = {}) {
+  const features = formatFeatures(format);
   // The API lists categories back-of-hall first; walk them front to back instead.
   const ordered = [];
   layout.categories.forEach((cat) => cat.rows.forEach((row) => ordered.push({ cat, row })));
@@ -52,7 +68,8 @@ export function buildHall(layout) {
   const maxRowWidth = Math.max(...rows.map((r) => r.total));
   const halfW = maxRowWidth / 2 + SIDE_AISLE;
   const screenW = halfW * 2 * 0.84;
-  const screenH = screenW / 2.25;
+  // IMAX and other large formats get a taller picture; everything else is classic widescreen
+  const screenH = screenW / (features.imax ? 1.85 : features.pxl || features.dolby ? 2.0 : 2.25);
   const screenBottom = 1.7;
   const screen = { w: screenW, h: screenH, bottom: screenBottom, cy: screenBottom + screenH / 2 };
 
@@ -102,7 +119,10 @@ export function buildHall(layout) {
     y += tier.rise;
   }
 
+  // Stadium-style block numbers: 101, 102, 103 for the front tier, 201... for the next one back
+  const tierOrder = [...new Set(rows.map((r) => r.cat.name))];
   for (const b of blocks.values()) {
+    b.code = String((tierOrder.indexOf(b.category) + 1) * 100 + b.segment + 1);
     b.center = { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z: (b.min.z + b.max.z) / 2 };
     b.width = b.max.x - b.min.x;
     b.depth = b.max.z - b.min.z;
@@ -112,7 +132,7 @@ export function buildHall(layout) {
   const zBack = z + 1.8;
   const topY = y;
   const hall = {
-    seats, seatById, blocks, rows: rowInfo, screen, halfW, zBack, topY,
+    seats, seatById, blocks, rows: rowInfo, screen, halfW, zBack, topY, features,
     wallH: Math.max(topY + 4.6, screen.bottom + screen.h + 1.4),
     center: { x: 0, y: topY * 0.35, z: zBack * 0.52 },
     radius: Math.hypot(halfW, zBack / 2) + 1.5,

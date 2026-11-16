@@ -70,7 +70,7 @@ function Bookings() {
   );
 }
 
-const EMPTY_MOVIE = { title: '', genres: '', languages: 'Hindi', duration_min: 120, certificate: 'UA', release_date: '', director: '', cast: '', poster_url: '', description: '', status: 'now_showing' };
+const EMPTY_MOVIE = { has_3d: false, featured: false, title: '', genres: '', languages: 'Hindi', duration_min: 120, certificate: 'UA', release_date: '', director: '', cast: '', poster_url: '', description: '', status: 'now_showing' };
 
 function Movies() {
   const toast = useToast();
@@ -90,11 +90,19 @@ function Movies() {
     } catch (err) { toast(err.message, 'error'); }
   };
 
-  const setStatus = async (m, status) => {
+  const update = async (m, changes) => {
     try {
-      await api.put(`/admin/movies/${m.id}`, { status });
+      await api.put(`/admin/movies/${m.id}`, changes);
       q.reload();
     } catch (err) { toast(err.message, 'error'); }
+  };
+  const setStatus = (m, status) => update(m, { status });
+  const [posterFor, setPosterFor] = useState(null); // { id, url } while a poster link is being edited
+  const savePoster = async (e) => {
+    e.preventDefault();
+    await update({ id: posterFor.id }, { poster_url: posterFor.url.trim() });
+    setPosterFor(null);
+    toast('Poster updated', 'success');
   };
 
   return (
@@ -127,6 +135,10 @@ function Movies() {
             <label>Cast (comma separated)<input value={form.cast} onChange={set('cast')} /></label>
           </div>
           <label>Poster URL<input type="url" value={form.poster_url} onChange={set('poster_url')} /></label>
+          <div className="form-row">
+            <label className="check"><input type="checkbox" checked={form.has_3d} onChange={(e) => setForm({ ...form, has_3d: e.target.checked })} /> Also released in 3D</label>
+            <label className="check"><input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} /> Headline film (first on the home page)</label>
+          </div>
           <label>Description<textarea rows={3} value={form.description} onChange={set('description')} /></label>
           <button className="btn btn-primary">Save movie</button>
         </form>
@@ -134,14 +146,29 @@ function Movies() {
       {q.loading ? <Loader /> : q.error ? <ErrorBox error={q.error} /> : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th /><th>Title</th><th>Genres</th><th>Rating</th><th>Status</th></tr></thead>
+            <thead><tr><th>Poster</th><th>Title</th><th>Genres</th><th>Rating</th><th>Headline</th><th>3D</th><th>Status</th></tr></thead>
             <tbody>
               {q.data.movies.map((m) => (
                 <tr key={m.id}>
-                  <td><Poster src={m.poster_url} alt="" className="thumb" /></td>
-                  <td>{m.title}<br /><small className="muted">{m.languages.join(', ')}</small></td>
+                  <td>
+                    <button className="thumb-btn" title="Change poster" onClick={() => setPosterFor({ id: m.id, url: m.poster_url || '' })}>
+                      <Poster src={m.poster_url} alt={m.title} className="thumb" />
+                    </button>
+                  </td>
+                  <td>
+                    {m.title}<br /><small className="muted">{m.languages.join(', ')}</small>
+                    {posterFor?.id === m.id && (
+                      <form className="poster-edit" onSubmit={savePoster}>
+                        <input id={`poster-${m.id}`} type="text" placeholder="Paste an image link (https://…)" value={posterFor.url} onChange={(e) => setPosterFor({ ...posterFor, url: e.target.value })} autoFocus />
+                        <button className="btn btn-primary btn-sm">Save</button>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPosterFor(null)}>Cancel</button>
+                      </form>
+                    )}
+                  </td>
                   <td>{m.genres.join(', ')}</td>
                   <td>{m.rating ? `${m.rating} (${m.votes})` : '—'}</td>
+                  <td><button className={`toggle ${m.featured ? 'on' : ''}`} onClick={() => update(m, { featured: !m.featured })} aria-label="Headline film" /></td>
+                  <td><button className={`toggle ${m.has_3d ? 'on' : ''}`} onClick={() => update(m, { has_3d: !m.has_3d })} aria-label="Released in 3D" /></td>
                   <td>
                     <select value={m.status} onChange={(e) => setStatus(m, e.target.value)}>
                       <option value="now_showing">Now showing</option>
@@ -162,7 +189,7 @@ function Movies() {
 function Shows() {
   const toast = useToast();
   const q = useAsync(() => Promise.all([api.get('/admin/movies'), api.get('/admin/screens')]), []);
-  const [form, setForm] = useState({ movieId: '', screenId: '', startsAt: '', language: '', priceFactor: 1 });
+  const [form, setForm] = useState({ movieId: '', screenId: '', startsAt: '', language: '', priceFactor: 1, is3d: false });
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   if (q.loading) return <Loader />;
@@ -195,6 +222,7 @@ function Shows() {
           {screens.map((s) => <option key={s.id} value={s.id}>{s.city_name} — {s.theatre_name} — {s.name} ({s.format})</option>)}
         </select>
       </label>
+      <label className="check"><input type="checkbox" checked={form.is3d} onChange={(e) => setForm({ ...form, is3d: e.target.checked })} /> 3D show (IMAX 3D, 4DX 3D, ScreenX 3D… depending on the screen)</label>
       <div className="form-row">
         <label>Starts at<input type="datetime-local" required value={form.startsAt} onChange={set('startsAt')} /></label>
         <label>Language

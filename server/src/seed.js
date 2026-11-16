@@ -1,7 +1,9 @@
 import bcrypt from 'bcryptjs';
 import { pathToFileURL } from 'node:url';
 import * as data from './seedData.js';
-import { ensureShows } from './lib/shows.js';
+import { getMeta, setMeta } from './db.js';
+import { ensureShows, PROGRAMME_VERSION, clearUnsoldFutureShows } from './lib/shows.js';
+import { normaliseTech } from './lib/formats.js';
 
 export const slugify = (s) =>
   s.toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_-]+/g, '-');
@@ -17,7 +19,10 @@ export function seed(db, { reset = false } = {}) {
   }
 
   const alreadySeeded = db.prepare('SELECT COUNT(*) AS n FROM cities').get().n > 0;
-  if (alreadySeeded) return false;
+  if (alreadySeeded) {
+    syncCatalogue(db);
+    return false;
+  }
 
   db.transaction(() => {
     const cityIds = {};
@@ -31,22 +36,7 @@ export function seed(db, { reset = false } = {}) {
       for (const s of t.screens) insScreen.run(tid, s.name, s.format, JSON.stringify(s.layout));
     }
 
-    const insMovie = db.prepare(`
-      INSERT INTO movies (title, slug, genres, languages, duration_min, certificate, release_date, description,
-                          director, cast_list, poster_url, backdrop_url, status)
-      VALUES (@title, @slug, @genres, @languages, @duration_min, @certificate, @release_date, @description,
-              @director, @cast_list, @poster_url, @backdrop_url, @status)`);
-    for (const m of data.movies) {
-      insMovie.run({
-        ...m,
-        slug: slugify(m.title),
-        genres: JSON.stringify(m.genres),
-        languages: JSON.stringify(m.languages),
-        cast_list: JSON.stringify(m.cast),
-        backdrop_url: m.backdrop_url ?? m.poster_url,
-        status: m.status ?? 'now_showing',
-      });
-    }
+    for (const m of data.movies) insertMovie(db, m);
 
     const insFood = db.prepare('INSERT INTO food_items (name, category, price, emoji, veg) VALUES (?, ?, ?, ?, ?)');
     for (const f of data.foodItems) insFood.run(f.name, f.category, f.price, f.emoji, f.veg ?? 1);
@@ -73,8 +63,70 @@ export function seed(db, { reset = false } = {}) {
     for (const r of starters) insReview.run(...r);
   })();
 
+  setMeta(db, 'programme_version', PROGRAMME_VERSION);
   ensureShows(db);
   return true;
+}
+
+function insertMovie(db, m) {
+  db.prepare(`
+    INSERT INTO movies (title, slug, genres, languages, duration_min, certificate, release_date, description,
+                        director, cast_list, poster_url, backdrop_url, status, tagline, featured, has_3d)
+    VALUES (@title, @slug, @genres, @languages, @duration_min, @certificate, @release_date, @description,
+            @director, @cast_list, @poster_url, @backdrop_url, @status, @tagline, @featured, @has_3d)`).run({
+    title: m.title,
+    slug: slugify(m.title),
+    genres: JSON.stringify(m.genres),
+    languages: JSON.stringify(m.languages),
+    duration_min: m.duration_min,
+    certificate: m.certificate,
+    release_date: m.release_date,
+    description: m.description,
+    director: m.director,
+    cast_list: JSON.stringify(m.cast),
+    poster_url: m.poster_url,
+    backdrop_url: m.backdrop_url ?? m.poster_url,
+    status: m.status ?? 'now_showing',
+    tagline: m.tagline ?? null,
+    featured: m.featured ? 1 : 0,
+    has_3d: m.has_3d ? 1 : 0,
+  });
+}
+
+/**
+ * Brings a database that was seeded by an older version up to date WITHOUT wiping it:
+ * adds new films and screens from seedData, and re-plans future shows when the programme rules change.
+ * Users, bookings, reviews and anything edited in the admin dashboard are left alone.
+ */
+export function syncCatalogue(db) {
+  db.transaction(() => {
+    const known = new Set(db.prepare('SELECT slug FROM movies').all().map((r) => r.slug));
+    for (const m of data.movies) {
+      if (!known.has(slugify(m.title))) insertMovie(db, m);
+      else if (m.has_3d) db.prepare('UPDATE movies SET has_3d = 1 WHERE slug = ?').run(slugify(m.title));
+    }
+
+    // Screens stored before formats existed ('2D' / '3D') become standard screens
+    for (const s of db.prepare('SELECT id, format FROM screens').all()) {
+      const tech = normaliseTech(s.format);
+      if (tech !== s.format) db.prepare('UPDATE screens SET format = ? WHERE id = ?').run(tech, s.id);
+    }
+    const findTheatre = db.prepare('SELECT id FROM theatres WHERE name = ?');
+    const findScreen = db.prepare('SELECT id FROM screens WHERE theatre_id = ? AND name = ?');
+    const insScreen = db.prepare('INSERT INTO screens (theatre_id, name, format, layout) VALUES (?, ?, ?, ?)');
+    for (const t of data.theatres) {
+      const theatre = findTheatre.get(t.name);
+      if (!theatre) continue;
+      for (const s of t.screens) {
+        if (!findScreen.get(theatre.id, s.name)) insScreen.run(theatre.id, s.name, s.format, JSON.stringify(s.layout));
+      }
+    }
+
+    if (getMeta(db, 'programme_version') !== String(PROGRAMME_VERSION)) {
+      clearUnsoldFutureShows(db);
+      setMeta(db, 'programme_version', PROGRAMME_VERSION);
+    }
+  })();
 }
 
 // `npm run seed` -> wipe and re-seed the database
